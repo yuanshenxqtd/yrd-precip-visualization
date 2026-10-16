@@ -8,12 +8,14 @@ import PointMatrix from '@/components/charts/PointMatrix.vue'
 import RegionSelect from '@/components/common/RegionSelect.vue'
 import StatCard from '@/components/common/StatCard.vue'
 import { useAppStore } from '@/stores/app'
+import { useDetailStore } from '@/stores/detail'
 import { useFilterStore } from '@/stores/filter'
 import type { CollectLog, RealtimeLatest, TrendPoint } from '@/types'
 import { formatNumber, shortDateTime, shortTime } from '@/utils/format'
 
 const app = useAppStore()
 const filter = useFilterStore()
+const detail = useDetailStore()
 
 const latest = ref<RealtimeLatest | null>(null)
 const series = ref<TrendPoint[]>([])
@@ -157,7 +159,7 @@ onMounted(loadAll)
         <span class="panel__subtitle">按省市分组 · 色阶为相对强度</span>
       </header>
       <div class="panel__body">
-        <PointMatrix :points="latest?.points ?? []" />
+        <PointMatrix :points="latest?.points ?? []" @select="detail.open($event)" />
       </div>
     </section>
 

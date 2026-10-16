@@ -189,3 +189,52 @@ class CollectResult(BaseModel):
     rows_inserted: int = Field(description="新增行数")
     elapsed_seconds: float = Field(description="耗时（秒）")
     message: str | None = Field(default=None, description="附加信息")
+
+
+# ---------------------------------------------------------------- 点位下钻详情
+
+class DetailHourly(BaseModel):
+    """下钻抽屉中的逐小时点。"""
+
+    time: str = Field(description="时刻")
+    value: float = Field(description="降水量（mm）")
+
+
+class DetailDaily(BaseModel):
+    """下钻抽屉中的逐日点。"""
+
+    time: str = Field(description="日期")
+    value: float = Field(description="日累计（mm）")
+    max: float | None = Field(default=None, description="当日最大小时雨强（mm/h）")
+    level: str | None = Field(default=None, description="降水等级")
+
+
+class RegionSummary(BaseModel):
+    """下钻抽屉的汇总指标。"""
+
+    latest_time: str | None = Field(default=None, description="最新实况时刻")
+    latest_value: float | None = Field(default=None, description="最新小时降水量")
+    sum_hours: float = Field(description="近 N 小时累计（mm）")
+    peak_hour_value: float | None = Field(default=None, description="窗口内最大小时雨强")
+    peak_hour_time: str | None = Field(default=None, description="该小时出现时刻")
+    sum_days: float = Field(description="近 N 天累计（mm）")
+    rain_days: int = Field(description="近 N 天有雨日数")
+    peak_day_value: float | None = Field(default=None, description="窗口内最大日累计")
+    peak_day_date: str | None = Field(default=None, description="该日日期")
+    first_time: str | None = Field(default=None, description="该点位最早数据时刻")
+    total_records: int = Field(description="该点位实况小时记录总数")
+    historic_max: float | None = Field(default=None, description="历史最大日累计（mm）")
+    historic_max_date: str | None = Field(default=None, description="历史最大日累计日期")
+
+
+class RegionDetail(BaseModel):
+    """单个点位的完整档案（下钻抽屉一次取全）。"""
+
+    region: RegionOut = Field(description="行政区划基本信息")
+    hours: int = Field(description="逐小时窗口长度")
+    days: int = Field(description="逐日窗口长度")
+    hourly: list[DetailHourly] = Field(description="近 N 小时逐小时降水")
+    daily: list[DetailDaily] = Field(description="近 N 天逐日降水")
+    levels: list[LevelCount] = Field(description="该点位历史降水等级分布")
+    extremes: list[ExtremeEvent] = Field(description="该点位历史极值榜")
+    summary: RegionSummary = Field(description="汇总指标")

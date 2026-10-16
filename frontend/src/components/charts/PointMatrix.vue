@@ -22,6 +22,9 @@ const props = withDefaults(
 
 const maxValue = computed(() => props.points.reduce((max, p) => Math.max(max, p.value ?? 0), 0))
 
+/** 点击某个点位 → 上层唤起详情抽屉（下钻） */
+const emit = defineEmits<{ select: [string] }>()
+
 const groups = computed(() => {
   const map = new Map<string, MapPoint[]>()
   for (const point of props.points) {
@@ -48,16 +51,18 @@ function background(value: number | null): string {
     <div v-for="group in groups" :key="group.province" class="matrix__row">
       <span class="matrix__province">{{ group.province }}</span>
       <div class="matrix__tiles">
-        <span
+        <button
           v-for="point in group.items"
           :key="point.adcode"
+          type="button"
           class="tile"
           :style="{ background: background(point.value) }"
-          :title="`${point.name}：${point.value ?? 0} ${unit}（${point.level ?? '—'}）`"
+          :title="`${point.name}：${point.value ?? 0} ${unit}（${point.level ?? '—'}）— 点击查看明细`"
+          @click="emit('select', point.adcode)"
         >
           <em class="tile__name">{{ point.name }}</em>
           <b class="tile__value text-mono">{{ formatNumber(point.value, 1) }}</b>
-        </span>
+        </button>
       </div>
     </div>
     <p class="matrix__legend text-muted">
@@ -106,15 +111,21 @@ function background(value: number | null): string {
   gap: 1px;
   min-width: 78px;
   padding: 4px 7px;
+  text-align: left;
   border: 1px solid rgba(120, 170, 255, 0.14);
   border-radius: 5px;
   transition: transform var(--transition), border-color var(--transition);
-  cursor: default;
+  cursor: pointer;
 }
 
 .tile:hover {
   transform: translateY(-1px);
   border-color: var(--panel-border-hover);
+}
+
+.tile:focus-visible {
+  outline: 2px solid var(--accent-light);
+  outline-offset: 1px;
 }
 
 .tile__name {

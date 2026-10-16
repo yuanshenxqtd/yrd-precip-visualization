@@ -138,6 +138,143 @@ def region_map(session: Session) -> dict[str, dict[str, Any]]:
     return {r["adcode"]: r for r in list_regions(session)}
 
 
+def region_detail(
+    session: Session,
+    adcode: str,
+    *,
+    hours: int = 48,
+    days: int = 30,
+    extremes_limit: int = 5,
+) -> dict[str, Any] | None:
+    """单个点位的详情档案，供前端「下钻抽屉」一次取全。
+
+    把「近 N 小时逐小时 + 近 N 天逐日 + 历史等级分布 + 历史极值 + 汇总指标」
+    合并为一个响应，避免下钻时打 4~5 个请求。
+    返回 None 表示该 adcode 不存在或不是采集点（如省级区划）。
+    """
+    region = session.get(Region, adcode)
+    if region is None:
+        return None
+
+    point_id = _point_id(session, adcode)
+    if point_id is None:
+        return None
+
+    latest = session.scalar(
+        select(func.max(PrecipHourly.obs_time)).where(
+            PrecipHourly.point_id == point_id,
+            PrecipHourly.is_forecast == 0,
+        )
+    )
+
+    # ---------------------------------------------------------- 逐小时
+    hourly: list[dict[str, Any]] = []
+    if latest:
+        start = shift_hours(latest, -(hours - 1))
+        rows = session.execute(
+            select(PrecipHourly.obs_time, PrecipHourly.precip_mm)
+            .where(
+                PrecipHourly.point_id == point_id,
+                PrecipHourly.is_forecast == 0,
+                PrecipHourly.obs_time >= start,
+                PrecipHourly.obs_time <= latest,
+            )
+            .order_by(PrecipHourly.obs_time)
+        ).all()
+        hourly = [{"time": t, "value": round(float(v or 0.0), 1)} for t, v in rows]
+
+    # ---------------------------------------------------------- 逐日
+    daily: list[dict[str, Any]] = []
+    last_date = session.scalar(
+        select(func.max(PrecipDaily.obs_date)).where(PrecipDaily.point_id == point_id)
+    )
+    if last_date:
+        start_date = shift_days(last_date, -(days - 1))
+        rows = session.execute(
+            select(
+                PrecipDaily.obs_date,
+                PrecipDaily.precip_sum,
+                PrecipDaily.precip_max_hourly,
+                PrecipDaily.rain_level,
+            )
+            .where(
+                PrecipDaily.point_id == point_id,
+                PrecipDaily.obs_date >= start_date,
+                PrecipDaily.obs_date <= last_date,
+            )
+            .order_by(PrecipDaily.obs_date)
+        ).all()
+        daily = [
+            {
+                "time": d,
+                "value": round(float(total or 0.0), 1),
+                "max": round(float(peak), 1) if peak is not None else None,
+                "level": level,
+            }
+            for d, total, peak, level in rows
+        ]
+
+    # ---------------------------------------------------------- 汇总
+    total_records = (
+        session.scalar(
+            select(func.count())
+            .select_from(PrecipHourly)
+            .where(PrecipHourly.point_id == point_id, PrecipHourly.is_forecast == 0)
+        )
+        or 0
+    )
+    first_time = session.scalar(
+        select(func.min(PrecipHourly.obs_time)).where(
+            PrecipHourly.point_id == point_id, PrecipHourly.is_forecast == 0
+        )
+    )
+
+    peak_hour = max(hourly, key=lambda x: x["value"], default=None)
+    peak_day = max(daily, key=lambda x: x["value"], default=None)
+    historic_peak = session.execute(
+        select(PrecipDaily.obs_date, PrecipDaily.precip_sum)
+        .where(PrecipDaily.point_id == point_id)
+        .order_by(PrecipDaily.precip_sum.desc())
+        .limit(1)
+    ).first()
+
+    summary = {
+        "latest_time": latest,
+        "latest_value": hourly[-1]["value"] if hourly else None,
+        "sum_hours": round(sum(x["value"] for x in hourly), 1),
+        "peak_hour_value": peak_hour["value"] if peak_hour else None,
+        "peak_hour_time": peak_hour["time"] if peak_hour else None,
+        "sum_days": round(sum(x["value"] for x in daily), 1),
+        "rain_days": sum(1 for x in daily if x["value"] > 0),
+        "peak_day_value": peak_day["value"] if peak_day else None,
+        "peak_day_date": peak_day["time"] if peak_day else None,
+        "first_time": first_time,
+        "total_records": total_records,
+        "historic_max": round(float(historic_peak[1] or 0.0), 1) if historic_peak else None,
+        "historic_max_date": historic_peak[0] if historic_peak else None,
+    }
+
+    return {
+        "region": {
+            "adcode": region.adcode,
+            "name": region.name,
+            "level": region.level,
+            "parent_adcode": region.parent_adcode,
+            "province": region.province,
+            "lon": region.lon,
+            "lat": region.lat,
+            "is_monitored": region.is_monitored,
+        },
+        "hours": hours,
+        "days": days,
+        "hourly": hourly,
+        "daily": daily,
+        "levels": trend_level_distribution(session, adcode=adcode),
+        "extremes": trend_extremes(session, adcode=adcode, limit=extremes_limit),
+        "summary": summary,
+    }
+
+
 # ------------------------------------------------------------------ overview
 
 def overview_summary(session: Session) -> dict[str, Any]:

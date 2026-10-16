@@ -6,11 +6,13 @@ import { describeError } from '@/api/client'
 import BoxplotChart from '@/components/charts/BoxplotChart.vue'
 import MultiLineChart from '@/components/charts/MultiLineChart.vue'
 import RankingBarChart from '@/components/charts/RankingBarChart.vue'
+import { useDetailStore } from '@/stores/detail'
 import { useFilterStore } from '@/stores/filter'
 import type { BoxplotItem, RankingItem } from '@/types'
 import { daysAgo, formatNumber, today } from '@/utils/format'
 
 const filter = useFilterStore()
+const detail = useDetailStore()
 
 const rangeDays = ref(30)
 const series = ref<{ adcode: string; name: string; points: { time: string; value: number }[] }[]>([])
@@ -153,7 +155,7 @@ onMounted(load)
           <span class="panel__subtitle">前 15 名 · 累计 mm</span>
         </header>
         <div class="panel__body">
-          <RankingBarChart :items="ranking" height="400px" />
+          <RankingBarChart :items="ranking" height="400px" @select="detail.open($event)" />
         </div>
       </section>
 

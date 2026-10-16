@@ -16,6 +16,14 @@ const el = ref<HTMLDivElement | null>(null)
 const chart = shallowRef<echarts.ECharts | null>(null)
 let observer: ResizeObserver | null = null
 
+/**
+ * 图表内部元素被点击时抛出。
+ *
+ * 供上层实现「下钻」：地图点击某个区划、条形图点击某根柱子，
+ * 上层从 params.data 里取出 adcode 即可唤起详情抽屉。
+ */
+const emit = defineEmits<{ chartClick: [unknown] }>()
+
 function render(): void {
   chart.value?.setOption(props.option, true)
 }
@@ -38,6 +46,7 @@ function syncLoading(): void {
 onMounted(() => {
   if (!el.value) return
   chart.value = echarts.init(el.value, undefined, { renderer: 'canvas' })
+  chart.value.on('click', (params: unknown) => emit('chartClick', params))
   render()
   syncLoading()
   observer = new ResizeObserver(() => chart.value?.resize())

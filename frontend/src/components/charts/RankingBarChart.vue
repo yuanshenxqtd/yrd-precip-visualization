@@ -19,6 +19,15 @@ const props = withDefaults(
 /** ECharts 的类目轴自下而上排布，反转后让第一名显示在最上方 */
 const ordered = computed(() => [...props.items].reverse())
 
+/** 点击某根柱子 → 上层唤起该点位详情（下钻） */
+const emit = defineEmits<{ select: [string] }>()
+
+function onChartClick(raw: unknown): void {
+  const params = raw as { name?: string }
+  const hit = props.items.find((item) => item.name === params.name)
+  if (hit) emit('select', hit.adcode)
+}
+
 const option = computed<EChartsOption>(() => ({
   tooltip: {
     ...tooltipStyle,
@@ -85,11 +94,21 @@ const option = computed<EChartsOption>(() => ({
 </script>
 
 <template>
-  <BaseChart v-if="items.length" :option="option" :height="height" />
+  <BaseChart
+    v-if="items.length"
+    :option="option"
+    :height="height"
+    class="ranking"
+    @chart-click="onChartClick"
+  />
   <p v-else class="chart-empty">该区间无数据</p>
 </template>
 
 <style scoped>
+.ranking :deep(canvas) {
+  cursor: pointer;
+}
+
 .chart-empty {
   display: grid;
   place-items: center;

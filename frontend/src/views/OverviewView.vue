@@ -15,12 +15,14 @@ import RainMap from '@/components/charts/RainMap.vue'
 import StatCard from '@/components/common/StatCard.vue'
 import { ensureYrdMap } from '@/composables/useYrdMap'
 import { useAppStore } from '@/stores/app'
+import { useDetailStore } from '@/stores/detail'
 import { useFilterStore } from '@/stores/filter'
 import type { LevelCount, MapFrame, OverviewSummary, RankingItem, TrendPoint } from '@/types'
 import { formatNumber, shiftHours, shortTime } from '@/utils/format'
 
 const app = useAppStore()
 const filter = useFilterStore()
+const detail = useDetailStore()
 
 const summary = ref<OverviewSummary | null>(null)
 const ranking = ref<RankingItem[]>([])
@@ -57,6 +59,7 @@ const mapValues = computed<Record<string, number>>(() => {
 
 const mapData = computed(() =>
   Object.entries(mapValues.value).map(([adcode, value]) => ({
+    adcode,
     name: filter.nameByAdcode[adcode] ?? adcode,
     value: Math.round((value ?? 0) * 10) / 10,
   })),
@@ -195,7 +198,7 @@ onMounted(load)
           </div>
         </header>
         <div class="panel__body">
-          <RainMap :data="mapData" height="452px" />
+          <RainMap :data="mapData" height="452px" @select="detail.open($event)" />
           <div v-if="mapMode === 'instant' && frames.length > 1" class="scrubber">
             <input
               v-model.number="frameIndex"
@@ -214,6 +217,7 @@ onMounted(load)
               当前帧 <span class="text-mono">{{ shortTime(currentFrame?.time) }}</span>
               <span class="text-muted">（拖动滑块回放过去 24 小时）</span>
             </template>
+            <span class="caption__hint">· 点击任意区划可查看该点位明细</span>
             <span v-if="mapDry" class="caption__dry">
               · 该区间全区无降水，地图呈中性色属正常现象
             </span>
@@ -224,21 +228,23 @@ onMounted(load)
       <section class="panel">
         <header class="panel__header">
           <div class="panel__title">降水排行 Top 10</div>
-          <span class="panel__subtitle">近 24 小时累计</span>
+          <span class="panel__subtitle">近 24 小时累计 · 点击查看明细</span>
         </header>
         <div class="panel__body">
           <p v-if="!ranking.length" class="empty">暂无数据</p>
           <ol v-else class="rank">
-            <li v-for="(item, index) in ranking" :key="item.adcode" class="rank__row">
-              <span class="rank__no" :class="{ 'rank__no--top': index < 3 }">{{ index + 1 }}</span>
-              <span class="rank__name">
-                {{ item.name }}
-                <em class="rank__province">{{ item.province }}</em>
-              </span>
-              <span class="rank__bar">
-                <i :style="{ width: `${maxRankingTotal ? (item.total / maxRankingTotal) * 100 : 0}%` }"></i>
-              </span>
-              <span class="rank__value text-mono">{{ formatNumber(item.total, 1) }}</span>
+            <li v-for="(item, index) in ranking" :key="item.adcode">
+              <button type="button" class="rank__row" @click="detail.open(item.adcode)">
+                <span class="rank__no" :class="{ 'rank__no--top': index < 3 }">{{ index + 1 }}</span>
+                <span class="rank__name">
+                  {{ item.name }}
+                  <em class="rank__province">{{ item.province }}</em>
+                </span>
+                <span class="rank__bar">
+                  <i :style="{ width: `${maxRankingTotal ? (item.total / maxRankingTotal) * 100 : 0}%` }"></i>
+                </span>
+                <span class="rank__value text-mono">{{ formatNumber(item.total, 1) }}</span>
+              </button>
             </li>
           </ol>
         </div>
@@ -401,7 +407,13 @@ onMounted(load)
   color: var(--text-2);
 }
 
+.caption__hint {
+  color: var(--accent-light);
+  opacity: 0.8;
+}
+
 .caption__dry {
+  margin-left: 6px;
   color: var(--warning);
 }
 
@@ -426,7 +438,23 @@ onMounted(load)
   grid-template-columns: 22px 1fr 74px 52px;
   align-items: center;
   gap: var(--gap-sm);
+  width: 100%;
+  padding: 3px 6px;
   font-size: 13px;
+  color: inherit;
+  text-align: left;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition);
+  cursor: pointer;
+}
+
+.rank__row:hover {
+  background: rgba(120, 170, 255, 0.09);
+}
+
+.rank__row:focus-visible {
+  outline: 2px solid var(--accent-light);
+  outline-offset: 0;
 }
 
 .rank__no {

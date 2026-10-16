@@ -15,6 +15,8 @@ const PATHS: Record<string, string> = {
   download: 'M12 3.5v11M7.5 10.5l4.5 4.5 4.5-4.5M4 20h16',
   check: 'M4.5 12.5l5 5 10-11',
   menu: 'M4 7h16M4 12h16M4 17h16',
+  close: 'M6 6l12 12M18 6L6 18',
+  focus: 'M12 4.5v3M12 16.5v3M4.5 12h3M16.5 12h3M8.5 8.5h7v7h-7z',
 }
 </script>
 

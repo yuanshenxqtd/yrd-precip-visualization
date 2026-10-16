@@ -18,6 +18,7 @@ import type {
   RankingItem,
   RealtimeLatest,
   Region,
+  RegionDetail,
   Timeseries,
 } from '@/types'
 
@@ -44,6 +45,9 @@ export const fetchMeta = () => get<MetaInfo>('/meta')
 /* ------------------------------------------------------------ 行政区划 */
 export const fetchRegions = () => get<Region[]>('/regions')
 export const fetchGeoJSON = () => get<GeoJSONFeatureCollection>('/regions/geojson')
+/** 单点位详情（下钻抽屉）：一次取回逐小时 + 逐日 + 等级 + 极值 + 汇总 */
+export const fetchRegionDetail = (adcode: string, params?: { hours?: number; days?: number }) =>
+  get<RegionDetail>(`/regions/${adcode}/detail`, params)
 
 /* ---------------------------------------------------------------- 总览 */
 export const fetchSummary = () => get<OverviewSummary>('/overview/summary')

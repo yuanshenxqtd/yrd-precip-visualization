@@ -219,3 +219,45 @@ export interface GeoJSONFeatureCollection {
     geometry: unknown
   }[]
 }
+
+/* ---------------------------------------------------------------- 点位下钻详情 */
+
+export interface DetailHourly {
+  time: string
+  value: number
+}
+
+export interface DetailDaily {
+  time: string
+  value: number
+  max: number | null
+  level: string | null
+}
+
+export interface RegionSummary {
+  latest_time: string | null
+  latest_value: number | null
+  sum_hours: number
+  peak_hour_value: number | null
+  peak_hour_time: string | null
+  sum_days: number
+  rain_days: number
+  peak_day_value: number | null
+  peak_day_date: string | null
+  first_time: string | null
+  total_records: number
+  historic_max: number | null
+  historic_max_date: string | null
+}
+
+/** 单点位完整档案（下钻抽屉一次取全） */
+export interface RegionDetail {
+  region: Region
+  hours: number
+  days: number
+  hourly: DetailHourly[]
+  daily: DetailDaily[]
+  levels: LevelCount[]
+  extremes: ExtremeEvent[]
+  summary: RegionSummary
+}

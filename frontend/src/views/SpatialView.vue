@@ -6,12 +6,14 @@ import { describeError } from '@/api/client'
 import RainMap from '@/components/charts/RainMap.vue'
 import TimeScrubber from '@/components/common/TimeScrubber.vue'
 import { useAppStore } from '@/stores/app'
+import { useDetailStore } from '@/stores/detail'
 import { useFilterStore } from '@/stores/filter'
 import type { MapFrame } from '@/types'
 import { formatNumber, shiftHours, shortTime } from '@/utils/format'
 
 const app = useAppStore()
 const filter = useFilterStore()
+const detail = useDetailStore()
 
 /** 小时数据的起始时刻 —— 决定时间轴回放能往前拖多远 */
 const hourlyStart = computed(() => app.meta?.hourly_start ?? null)
@@ -79,6 +81,7 @@ const frameLabel = computed(() => shortTime(currentFrame.value?.time))
 
 const mapData = computed(() =>
   Object.entries(currentFrame.value?.values ?? {}).map(([adcode, v]) => ({
+    adcode,
     name: filter.nameByAdcode[adcode] ?? adcode,
     value: Math.round((v ?? 0) * 10) / 10,
   })),
@@ -205,7 +208,7 @@ onMounted(load)
           <span class="panel__subtitle">{{ frameLabel }}</span>
         </header>
         <div class="panel__body">
-          <RainMap :data="mapData" height="470px" />
+          <RainMap :data="mapData" height="470px" @select="detail.open($event)" />
           <div class="player">
             <TimeScrubber v-model="index" :total="frames.length" :label="frameLabel" />
           </div>
@@ -230,15 +233,17 @@ onMounted(load)
         <section class="panel">
           <header class="panel__header">
             <div class="panel__title">本帧降水排行</div>
-            <span class="panel__subtitle">前 12 名</span>
+            <span class="panel__subtitle">前 12 名 · 点击查看明细</span>
           </header>
           <div class="panel__body">
             <p v-if="!frameRanking.length" class="empty">该时刻全区无降水</p>
             <ol v-else class="rank">
-              <li v-for="(item, i) in frameRanking" :key="item.adcode" class="rank__row">
-                <span class="rank__no" :class="{ 'rank__no--top': i < 3 }">{{ i + 1 }}</span>
-                <span class="rank__name">{{ item.name }}</span>
-                <span class="rank__value text-mono">{{ formatNumber(item.value, 1) }}</span>
+              <li v-for="(item, i) in frameRanking" :key="item.adcode">
+                <button type="button" class="rank__row" @click="detail.open(item.adcode)">
+                  <span class="rank__no" :class="{ 'rank__no--top': i < 3 }">{{ i + 1 }}</span>
+                  <span class="rank__name">{{ item.name }}</span>
+                  <span class="rank__value text-mono">{{ formatNumber(item.value, 1) }}</span>
+                </button>
               </li>
             </ol>
           </div>
@@ -392,7 +397,23 @@ onMounted(load)
   grid-template-columns: 20px 1fr auto;
   align-items: center;
   gap: 8px;
+  width: 100%;
+  padding: 3px 5px;
   font-size: 12.5px;
+  color: inherit;
+  text-align: left;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition);
+  cursor: pointer;
+}
+
+.rank__row:hover {
+  background: rgba(120, 170, 255, 0.09);
+}
+
+.rank__row:focus-visible {
+  outline: 2px solid var(--accent-light);
+  outline-offset: 0;
 }
 
 .rank__no {

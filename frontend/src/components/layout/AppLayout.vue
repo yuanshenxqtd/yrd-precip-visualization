@@ -3,6 +3,7 @@ import { onMounted } from 'vue'
 
 import AppHeader from './AppHeader.vue'
 import AppSidebar from './AppSidebar.vue'
+import DetailDrawer from '@/components/common/DetailDrawer.vue'
 import { useAppStore } from '@/stores/app'
 import { useFilterStore } from '@/stores/filter'
 
@@ -47,6 +48,9 @@ onMounted(async () => {
         </RouterView>
       </main>
     </div>
+
+    <!-- 下钻抽屉：全站唯一实例，任何图表调用 detail.open(adcode) 即可唤起 -->
+    <DetailDrawer />
   </div>
 </template>
 

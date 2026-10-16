@@ -35,12 +35,21 @@ onMounted(async () => {
 
 const props = withDefaults(
   defineProps<{
-    data: { name: string; value: number }[]
+    /** adcode 可选：带上它以后，点击区划就能直接下钻到该点位详情 */
+    data: { name: string; value: number; adcode?: string }[]
     height?: string
     unit?: string
   }>(),
   { height: '460px', unit: 'mm' },
 )
+
+const emit = defineEmits<{ select: [string] }>()
+
+function onChartClick(raw: unknown): void {
+  const params = raw as { data?: { adcode?: string } }
+  const code = params.data?.adcode
+  if (code) emit('select', code)
+}
 
 const option = computed<EChartsOption>(() => ({
   tooltip: {
@@ -105,7 +114,13 @@ const option = computed<EChartsOption>(() => ({
 
 <template>
   <div class="rain-map">
-    <BaseChart v-if="readyMap" :option="option" :height="height" />
+    <BaseChart
+      v-if="readyMap"
+      :option="option"
+      :height="height"
+      class="rain-map__chart"
+      @chart-click="onChartClick"
+    />
     <div v-else class="rain-map__hint" :class="{ 'rain-map__hint--error': mapError }">
       {{ mapError ? `地图加载失败：${mapError}` : '正在加载长三角地图…' }}
     </div>
@@ -115,6 +130,11 @@ const option = computed<EChartsOption>(() => ({
 <style scoped>
 .rain-map {
   position: relative;
+}
+
+/* 提示可点击下钻 */
+.rain-map__chart :deep(canvas) {
+  cursor: pointer;
 }
 
 .rain-map__hint {

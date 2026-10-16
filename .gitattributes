@@ -1,0 +1,18 @@
+# 统一换行符策略。
+#
+# 特别注意 .bat：cmd.exe 对批处理文件的解析非常脆弱
+# （本项目已因 UTF-8/GBK 编码问题踩过一次坑），
+# 因此强制批处理文件在工作区始终为 CRLF，避免检出后变成 LF 影响执行。
+
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制文件不做换行转换
+*.db binary
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary

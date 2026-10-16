@@ -1,0 +1,65 @@
+/**
+ * 视觉规范 · 设计令牌
+ *
+ * 全部界面颜色、间距、圆角、字号都从这里取，页面里不写魔法值。
+ * 降水等级配色与后端 backend/app/levels.py 的 LEVEL_COLORS 保持一致，
+ * 保证地图、图表、图例三处颜色统一。
+ */
+
+:root {
+  /* ---------- 背景层次 ---------- */
+  --bg-0: #070d1a;
+  --bg-1: #0b1428;
+  --bg-2: #101d38;
+  --bg-glow-1: rgba(58, 160, 224, 0.16);
+  --bg-glow-2: rgba(127, 208, 245, 0.08);
+
+  /* ---------- 面板 ---------- */
+  --panel-bg: rgba(16, 29, 56, 0.72);
+  --panel-bg-solid: #101d38;
+  --panel-border: rgba(120, 170, 255, 0.16);
+  --panel-border-hover: rgba(120, 170, 255, 0.34);
+  --panel-shadow: 0 8px 28px rgba(0, 0, 0, 0.34);
+
+  /* ---------- 文字 ---------- */
+  --text-0: #eaf2ff;
+  --text-1: #a8bcd8;
+  --text-2: #6c80a6;
+  --text-3: #47597c;
+
+  /* ---------- 主题色 ---------- */
+  --accent: #3aa0e0;
+  --accent-light: #7fd0f5;
+  --accent-dim: rgba(58, 160, 224, 0.14);
+  --success: #2ecc71;
+  --warning: #f5d76e;
+  --danger: #e74c3c;
+
+  /* ---------- 降水等级（与后端一致）---------- */
+  --rain-none: #2b3a55;
+  --rain-light: #7fd0f5;
+  --rain-moderate: #3aa0e0;
+  --rain-heavy: #f5d76e;
+  --rain-storm: #f39c12;
+  --rain-downpour: #e74c3c;
+  --rain-extreme: #8e1b1b;
+
+  /* ---------- 尺寸 ---------- */
+  --sidebar-width: 216px;
+  --sidebar-width-collapsed: 68px;
+  --header-height: 60px;
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --gap-xs: 6px;
+  --gap-sm: 10px;
+  --gap: 16px;
+  --gap-lg: 24px;
+
+  /* ---------- 字体 ---------- */
+  --font-sans: 'Inter', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace;
+
+  /* ---------- 动效 ---------- */
+  --transition: 160ms cubic-bezier(0.4, 0, 0.2, 1);
+}

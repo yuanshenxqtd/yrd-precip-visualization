@@ -1,0 +1,191 @@
+"""API 响应契约（Pydantic 模型）。
+
+这些模型会直接呈现在 FastAPI 自动生成的 Swagger 文档中
+（http://127.0.0.1:8000/docs），是论文「接口设计」一节的截图素材。
+"""
+
+from __future__ import annotations
+
+from pydantic import BaseModel, Field
+
+
+class MetaOut(BaseModel):
+    """系统与数据源状态。"""
+
+    data_source: str = Field(description="数据源标识")
+    points_total: int = Field(description="采集点总数")
+    regions_total: int = Field(description="行政区划总数")
+    hourly_rows: int = Field(description="逐小时降水总行数")
+    daily_rows: int = Field(description="日汇总总行数")
+    hourly_start: str | None = Field(default=None, description="小时数据起始时刻")
+    hourly_end: str | None = Field(default=None, description="小时数据结束时刻")
+    daily_start: str | None = Field(default=None, description="日数据起始日期")
+    daily_end: str | None = Field(default=None, description="日数据结束日期")
+    last_collect_at: str | None = Field(default=None, description="最近一次采集开始时间")
+    last_collect_status: str | None = Field(default=None, description="最近一次采集状态")
+    db_initialized_at: str | None = Field(default=None, description="数据库初始化时间")
+    collect_interval_minutes: int = Field(description="采集间隔（分钟）")
+
+
+class RegionOut(BaseModel):
+    """行政区划。"""
+
+    adcode: str = Field(description="行政区划代码")
+    name: str = Field(description="名称")
+    level: str = Field(description="层级：province / city / district")
+    parent_adcode: str | None = Field(default=None, description="上级代码")
+    province: str = Field(description="所属省市")
+    lon: float = Field(description="中心经度")
+    lat: float = Field(description="中心纬度")
+    is_monitored: int = Field(description="是否参与采集：1 是，0 否")
+
+
+class TrendPoint(BaseModel):
+    """时间序列上的一个点。"""
+
+    time: str = Field(description="时间标签")
+    value: float = Field(description="降水值（mm）")
+
+
+class RankingItem(BaseModel):
+    """排行榜条目。"""
+
+    adcode: str = Field(description="行政区划代码")
+    name: str = Field(description="点位名称")
+    province: str = Field(description="所属省市")
+    total: float = Field(description="区间累计降水（mm）")
+    peak: float | None = Field(default=None, description="最大小时雨强（mm）")
+
+
+class MapPoint(BaseModel):
+    """地图上的一个点位取值。"""
+
+    adcode: str = Field(description="行政区划代码")
+    name: str = Field(description="点位名称")
+    province: str = Field(description="所属省市")
+    lon: float = Field(description="经度")
+    lat: float = Field(description="纬度")
+    value: float | None = Field(default=None, description="降水值（mm）")
+    level: str | None = Field(default=None, description="降水等级（GB/T 28592-2012）")
+    color: str | None = Field(default=None, description="建议配色")
+
+
+class MapFrame(BaseModel):
+    """时间轴回放的一帧。"""
+
+    time: str = Field(description="时刻")
+    values: dict[str, float | None] = Field(description="行政区划代码 -> 降水量（mm）")
+
+
+class SummaryOut(BaseModel):
+    """总览指标卡。"""
+
+    latest_obs_time: str | None = Field(default=None, description="最新实况时刻")
+    points_total: int = Field(description="点位总数")
+    points_with_rain: int = Field(description="该时刻有降水的点位数")
+    rain_coverage_pct: float = Field(description="降水覆盖率（%）")
+    sum_24h_mm: float = Field(description="近 24 小时全区累计（mm）")
+    max_hourly_mm: float | None = Field(default=None, description="近 24 小时最大小时雨强")
+    max_hourly_point: str | None = Field(default=None, description="最大小时雨强点位")
+    max_hourly_time: str | None = Field(default=None, description="最大小时雨强出现时刻")
+    wettest_point: str | None = Field(default=None, description="近 24 小时累计最多点位")
+    wettest_24h_mm: float = Field(default=0.0, description="该点位近 24 小时累计")
+    today_wettest_point: str | None = Field(default=None, description="今日累计最多点位")
+    today_wettest_mm: float = Field(default=0.0, description="今日最大累计")
+    last_collect_at: str | None = Field(default=None, description="最近一次采集时间")
+    last_collect_status: str | None = Field(default=None, description="最近一次采集状态")
+    forecast_hours: int = Field(default=0, description="库内预报小时数")
+
+
+class LevelCount(BaseModel):
+    """降水等级计数。"""
+
+    rain_level: str = Field(description="等级名")
+    count: int = Field(description="天数")
+    color: str | None = Field(default=None, description="建议配色")
+
+
+class ExtremeEvent(BaseModel):
+    """极端降水事件（单日单点）。"""
+
+    adcode: str = Field(description="行政区划代码")
+    name: str = Field(description="点位名称")
+    province: str = Field(description="所属省市")
+    obs_date: str = Field(description="日期")
+    precip_sum: float = Field(description="日累计降水（mm）")
+    precip_max_hourly: float | None = Field(default=None, description="最大小时雨强（mm/h）")
+    rain_hours: int | None = Field(default=None, description="有雨小时数；null 表示无小时明细")
+    rain_level: str | None = Field(default=None, description="降水等级")
+    color: str | None = Field(default=None, description="建议配色")
+
+
+class AnomalyPoint(BaseModel):
+    """降水距平。"""
+
+    month: str = Field(description="月份，如 2026-08")
+    actual: float = Field(description="当月实际降水累计（mm）")
+    baseline: float = Field(description="同期基准值（mm）")
+    anomaly_pct: float | None = Field(default=None, description="距平百分比（%）")
+
+
+class BoxplotItem(BaseModel):
+    """箱线图统计量。"""
+
+    adcode: str = Field(description="行政区划代码")
+    name: str = Field(description="点位名称")
+    province: str = Field(description="所属省市")
+    min: float = Field(description="最小值")
+    q1: float = Field(description="下四分位")
+    median: float = Field(description="中位数")
+    q3: float = Field(description="上四分位")
+    max: float = Field(description="最大值")
+    mean: float = Field(description="平均值")
+
+
+class CollectLogOut(BaseModel):
+    """采集日志条目。"""
+
+    id: int
+    source: str = Field(description="数据源")
+    mode: str = Field(description="采集模式")
+    status: str = Field(description="状态：running / success / failed")
+    points_total: int = Field(description="点位数")
+    rows_upserted: int = Field(description="写入行数")
+    gap_filled_hours: int = Field(description="新补充的小时数")
+    started_at: str = Field(description="开始时间")
+    finished_at: str | None = Field(default=None, description="结束时间")
+    error_msg: str | None = Field(default=None, description="错误信息")
+
+
+class QualityOut(BaseModel):
+    """数据质量报告。"""
+
+    hourly_rows: int = Field(description="小时行数")
+    hourly_null: int = Field(description="小时降水为 NULL 的行数")
+    hourly_null_pct: float = Field(description="缺测率（%）")
+    hourly_observed_rows: int = Field(description="实况行数")
+    hourly_forecast_rows: int = Field(description="预报行数")
+    observed_start: str | None = Field(default=None, description="实况起始时刻")
+    observed_end: str | None = Field(default=None, description="实况结束时刻")
+    distinct_hours: int = Field(description="实况覆盖的整点数")
+    expected_hours: int = Field(description="理论应覆盖的整点数")
+    missing_hours: int = Field(description="缺失整点数")
+    coverage_pct: float = Field(description="时间覆盖率（%）")
+    daily_rows: int = Field(description="日汇总行数")
+    daily_with_detail: int = Field(description="有小时明细的日行数")
+    daily_without_detail: int = Field(description="无小时明细的日行数（历史回填）")
+    collect_total: int = Field(description="采集总次数")
+    collect_success: int = Field(description="成功次数")
+    collect_failed: int = Field(description="失败次数")
+    last_collect_at: str | None = Field(default=None, description="最近一次采集时间")
+
+
+class CollectResult(BaseModel):
+    """手动采集的返回结果。"""
+
+    status: str = Field(description="success / failed")
+    points: int = Field(description="点位数")
+    rows_written: int = Field(description="写入行数")
+    rows_inserted: int = Field(description="新增行数")
+    elapsed_seconds: float = Field(description="耗时（秒）")
+    message: str | None = Field(default=None, description="附加信息")

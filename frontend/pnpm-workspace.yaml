@@ -1,0 +1,24 @@
+# pnpm 配置入口（package.json 中的 pnpm 字段在 pnpm 10+ 已不再被读取，
+# 配置统一放在本文件；旧版键名 onlyBuiltDependencies 在 pnpm 11+ 更名为 allowBuilds）。
+
+# ---------------------------------------------------------------- 构建脚本放行
+# pnpm 默认拦截依赖的构建脚本。这两个包必须放行，否则前端无法构建：
+#   esbuild   —— 需要执行安装脚本准备平台二进制，Vite 依赖它
+#   vue-demi  —— 需要执行脚本切换 Vue 版本适配，Pinia 依赖它
+# 其余依赖的构建脚本仍保持拦截（安全默认）。
+allowBuilds:
+  esbuild: true
+  vue-demi: true
+
+# ---------------------------------------------------------------- 供应链门限
+# pnpm 12 默认启用「最小发布年龄」(minimumReleaseAge)，会拒绝锁文件里
+# 刚发布不久的包（实测报错：@rollup/rollup-*@4.64.3 发布不足门限时长）。
+#
+# 本项目的 pnpm-lock.yaml 由 pnpm 11 生成，已精确固定每个包的版本与完整性哈希，
+# 因此这里显式把门限设为 0，使 pnpm 11 与 pnpm 12 行为一致
+# （DSH 自带的 pnpm 也是以 minimumReleaseAge=0 运行的）。
+#
+# 若将来要重新启用该保护：删除本行，然后执行
+#   pnpm clean --lockfile && pnpm install
+# 让 pnpm 按新门限重新解析出一份较旧的依赖版本。
+minimumReleaseAge: 0

@@ -1,0 +1,922 @@
+"""数据访问层：所有 SQL 聚合集中在此，路由层只负责 HTTP 语义。
+
+设计约定：
+    - 函数只接收 Session 与普通参数，返回可 JSON 序列化的 dict/list
+    - 时间一律用字符串比较（obs_time 形如 2026-10-07T15:00，obs_date 形如 2026-10-07），
+      字典序与时间序一致，SQLite 可直接比较，无需转换
+"""
+
+from __future__ import annotations
+
+import statistics
+from datetime import date, datetime, timedelta
+from typing import Any, Iterator, Sequence
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from .config import COLLECT_INTERVAL_MINUTES, OPENMETEO_SOURCE_NAME
+from .levels import LEVEL_COLORS, classify
+from .models import (
+    CollectLog,
+    GridPoint,
+    Meta,
+    PrecipDaily,
+    PrecipHourly,
+    Region,
+    WeatherAlert,
+)
+
+TIME_FMT = "%Y-%m-%dT%H:%M"
+DATE_FMT = "%Y-%m-%d"
+
+# 距平基准年份：只用完整年份。
+# 2023 仅含 9–12 月、2026 截至 10 月，均为不完整年份，混入会严重偏差。
+COMPLETE_YEARS: tuple[int, ...] = (2024, 2025)
+
+_NO_RAIN_COLOR = LEVEL_COLORS.get("无降水", "#2b3a55")
+
+
+# ------------------------------------------------------------------ 小工具
+
+def shift_hours(obs_time: str, hours: int) -> str:
+    """在 'YYYY-MM-DDTHH:MM' 上加减小时。"""
+    return (datetime.strptime(obs_time, TIME_FMT) + timedelta(hours=hours)).strftime(TIME_FMT)
+
+
+def shift_days(obs_date: str, days: int) -> str:
+    """在 'YYYY-MM-DD' 上加减天数。"""
+    return (datetime.strptime(obs_date, DATE_FMT) + timedelta(days=days)).strftime(DATE_FMT)
+
+
+def _five_number(values: Sequence[float]) -> dict[str, float]:
+    """计算箱线图五数概括。"""
+    vals = sorted(float(v) for v in values)
+    n = len(vals)
+    if n == 1:
+        v = round(vals[0], 2)
+        return {"min": v, "q1": v, "median": v, "q3": v, "max": v, "mean": v}
+    q1, _q2, q3 = statistics.quantiles(vals, n=4, method="inclusive")
+    return {
+        "min": round(vals[0], 2),
+        "q1": round(q1, 2),
+        "median": round(statistics.median(vals), 2),
+        "q3": round(q3, 2),
+        "max": round(vals[-1], 2),
+        "mean": round(sum(vals) / n, 2),
+    }
+
+
+def latest_observed_time(session: Session) -> str | None:
+    """库内最新的实况整点时刻。"""
+    return session.scalar(
+        select(func.max(PrecipHourly.obs_time)).where(PrecipHourly.is_forecast == 0)
+    )
+
+
+def _point_id(session: Session, adcode: str | None) -> int | None:
+    if not adcode:
+        return None
+    return session.scalar(select(GridPoint.id).where(GridPoint.region_adcode == adcode))
+
+
+# ------------------------------------------------------------------ meta
+
+def get_meta(session: Session) -> dict[str, Any]:
+    hourly_rows = session.scalar(select(func.count()).select_from(PrecipHourly)) or 0
+    daily_rows = session.scalar(select(func.count()).select_from(PrecipDaily)) or 0
+    regions_total = session.scalar(select(func.count()).select_from(Region)) or 0
+    points_total = session.scalar(select(func.count()).select_from(GridPoint)) or 0
+
+    hourly_start, hourly_end = session.execute(
+        select(func.min(PrecipHourly.obs_time), func.max(PrecipHourly.obs_time))
+    ).one()
+    daily_start, daily_end = session.execute(
+        select(func.min(PrecipDaily.obs_date), func.max(PrecipDaily.obs_date))
+    ).one()
+
+    last_log = session.scalars(select(CollectLog).order_by(CollectLog.id.desc()).limit(1)).first()
+    initialized = session.scalar(select(Meta.value).where(Meta.key == "db_initialized_at"))
+
+    return {
+        "data_source": OPENMETEO_SOURCE_NAME,
+        "points_total": points_total,
+        "regions_total": regions_total,
+        "hourly_rows": hourly_rows,
+        "daily_rows": daily_rows,
+        "hourly_start": hourly_start,
+        "hourly_end": hourly_end,
+        "daily_start": daily_start,
+        "daily_end": daily_end,
+        "last_collect_at": last_log.started_at if last_log else None,
+        "last_collect_status": last_log.status if last_log else None,
+        "db_initialized_at": initialized,
+        "collect_interval_minutes": COLLECT_INTERVAL_MINUTES,
+    }
+
+
+# ------------------------------------------------------------------ regions
+
+def list_regions(session: Session) -> list[dict[str, Any]]:
+    rows = session.scalars(select(Region).order_by(Region.adcode)).all()
+    return [
+        {
+            "adcode": r.adcode,
+            "name": r.name,
+            "level": r.level,
+            "parent_adcode": r.parent_adcode,
+            "province": r.province,
+            "lon": r.lon,
+            "lat": r.lat,
+            "is_monitored": r.is_monitored,
+        }
+        for r in rows
+    ]
+
+
+def region_map(session: Session) -> dict[str, dict[str, Any]]:
+    return {r["adcode"]: r for r in list_regions(session)}
+
+
+# ------------------------------------------------------------------ overview
+
+def overview_summary(session: Session) -> dict[str, Any]:
+    latest = latest_observed_time(session)
+    points_total = session.scalar(select(func.count()).select_from(GridPoint)) or 0
+    forecast_hours = (
+        session.scalar(
+            select(func.count()).select_from(PrecipHourly).where(PrecipHourly.is_forecast == 1)
+        )
+        or 0
+    )
+
+    summary: dict[str, Any] = {
+        "latest_obs_time": latest,
+        "points_total": points_total,
+        "points_with_rain": 0,
+        "rain_coverage_pct": 0.0,
+        "sum_24h_mm": 0.0,
+        "max_hourly_mm": None,
+        "max_hourly_point": None,
+        "max_hourly_time": None,
+        "wettest_point": None,
+        "wettest_24h_mm": 0.0,
+        "today_wettest_point": None,
+        "today_wettest_mm": 0.0,
+        "forecast_hours": forecast_hours,
+    }
+
+    last_log = session.scalars(select(CollectLog).order_by(CollectLog.id.desc()).limit(1)).first()
+    summary["last_collect_at"] = last_log.started_at if last_log else None
+    summary["last_collect_status"] = last_log.status if last_log else None
+
+    if latest is None:
+        return summary
+
+    # 当前时刻有降水的点位
+    summary["points_with_rain"] = (
+        session.scalar(
+            select(func.count())
+            .select_from(PrecipHourly)
+            .where(
+                PrecipHourly.is_forecast == 0,
+                PrecipHourly.obs_time == latest,
+                PrecipHourly.precip_mm > 0,
+            )
+        )
+        or 0
+    )
+    if points_total:
+        summary["rain_coverage_pct"] = round(100 * summary["points_with_rain"] / points_total, 1)
+
+    # 近 24 小时窗口（含当前时刻，共 24 个整点）
+    window_start = shift_hours(latest, -23)
+    window = (
+        PrecipHourly.is_forecast == 0,
+        PrecipHourly.obs_time >= window_start,
+        PrecipHourly.obs_time <= latest,
+    )
+
+    summary["sum_24h_mm"] = round(
+        float(
+            session.scalar(
+                select(func.coalesce(func.sum(PrecipHourly.precip_mm), 0.0)).where(*window)
+            )
+            or 0.0
+        ),
+        1,
+    )
+
+    peak = session.execute(
+        select(PrecipHourly.precip_mm, PrecipHourly.obs_time, GridPoint.label)
+        .join(GridPoint, GridPoint.id == PrecipHourly.point_id)
+        .where(*window)
+        .order_by(PrecipHourly.precip_mm.desc())
+        .limit(1)
+    ).first()
+    if peak and peak[0] is not None and float(peak[0]) > 0:
+        summary["max_hourly_mm"] = round(float(peak[0]), 1)
+        summary["max_hourly_time"] = peak[1]
+        summary["max_hourly_point"] = peak[2]
+
+    wettest = session.execute(
+        select(GridPoint.label, func.sum(PrecipHourly.precip_mm).label("total"))
+        .join(GridPoint, GridPoint.id == PrecipHourly.point_id)
+        .where(*window)
+        .group_by(GridPoint.id)
+        .order_by(func.sum(PrecipHourly.precip_mm).desc())
+        .limit(1)
+    ).first()
+    if wettest and wettest[1] is not None and float(wettest[1]) > 0:
+        summary["wettest_point"] = wettest[0]
+        summary["wettest_24h_mm"] = round(float(wettest[1]), 1)
+
+    # 今日累计最多点位（来自日汇总表）
+    today = session.scalar(
+        select(func.max(PrecipDaily.obs_date)).where(PrecipDaily.source == OPENMETEO_SOURCE_NAME)
+    )
+    if today:
+        row = session.execute(
+            select(GridPoint.label, PrecipDaily.precip_sum)
+            .join(GridPoint, GridPoint.id == PrecipDaily.point_id)
+            .where(PrecipDaily.obs_date == today)
+            .order_by(PrecipDaily.precip_sum.desc())
+            .limit(1)
+        ).first()
+        if row and float(row[1] or 0) > 0:
+            summary["today_wettest_point"] = row[0]
+            summary["today_wettest_mm"] = round(float(row[1] or 0), 1)
+
+    return summary
+
+
+def overview_ranking(session: Session, *, limit: int = 10, hours: int = 24) -> list[dict[str, Any]]:
+    latest = latest_observed_time(session)
+    if latest is None:
+        return []
+    start = shift_hours(latest, -(hours - 1))
+    rows = session.execute(
+        select(
+            GridPoint.region_adcode,
+            GridPoint.label,
+            Region.province,
+            func.sum(PrecipHourly.precip_mm).label("total"),
+            func.max(PrecipHourly.precip_mm).label("peak"),
+        )
+        .join(GridPoint, GridPoint.id == PrecipHourly.point_id)
+        .join(Region, Region.adcode == GridPoint.region_adcode)
+        .where(
+            PrecipHourly.is_forecast == 0,
+            PrecipHourly.obs_time >= start,
+            PrecipHourly.obs_time <= latest,
+        )
+        .group_by(GridPoint.id)
+        .order_by(func.sum(PrecipHourly.precip_mm).desc())
+        .limit(limit)
+    ).all()
+    return [
+        {
+            "adcode": r[0],
+            "name": r[1],
+            "province": r[2],
+            "total": round(float(r[3] or 0), 1),
+            "peak": round(float(r[4]), 1) if r[4] is not None else None,
+        }
+        for r in rows
+    ]
+
+
+# ------------------------------------------------------------------ realtime / spatial
+
+def _map_points(session: Session, obs_time: str) -> list[dict[str, Any]]:
+    """取指定时刻全部点位的降水值。"""
+    rows = session.execute(
+        select(
+            Region.adcode,
+            Region.name,
+            Region.province,
+            GridPoint.lon,
+            GridPoint.lat,
+            GridPoint.label,
+            PrecipHourly.precip_mm,
+        )
+        .join(GridPoint, GridPoint.id == PrecipHourly.point_id)
+        .join(Region, Region.adcode == GridPoint.region_adcode)
+        .where(PrecipHourly.obs_time == obs_time, PrecipHourly.is_forecast == 0)
+        .order_by(Region.adcode)
+    ).all()
+
+    points: list[dict[str, Any]] = []
+    for adcode, name, province, lon, lat, label, mm in rows:
+        value = round(float(mm), 1) if mm is not None else None
+        level = classify(value, hours=24) if value is not None else None
+        points.append(
+            {
+                "adcode": adcode,
+                "name": label or name,
+                "province": province,
+                "lon": lon,
+                "lat": lat,
+                "value": value,
+                "level": level,
+                "color": LEVEL_COLORS.get(level or "", _NO_RAIN_COLOR),
+            }
+        )
+    return points
+
+
+def realtime_latest(session: Session) -> dict[str, Any]:
+    latest = latest_observed_time(session)
+    if latest is None:
+        return {"time": None, "points": [], "daily": []}
+
+    daily = session.execute(
+        select(GridPoint.region_adcode, PrecipDaily.precip_sum, PrecipDaily.rain_level)
+        .join(GridPoint, GridPoint.id == PrecipDaily.point_id)
+        .where(PrecipDaily.obs_date == latest[:10])
+    ).all()
+
+    return {
+        "time": latest,
+        "points": _map_points(session, latest),
+        "daily": [
+            {"adcode": r[0], "value": round(float(r[1] or 0), 1), "level": r[2]} for r in daily
+        ],
+    }
+
+
+def realtime_timeseries(session: Session, *, adcode: str | None = None, hours: int = 48) -> dict[str, Any]:
+    latest = latest_observed_time(session)
+    if latest is None:
+        return {"adcode": adcode, "start": None, "end": None, "points": []}
+    start = shift_hours(latest, -(hours - 1))
+
+    stmt = (
+        select(PrecipHourly.obs_time, func.sum(PrecipHourly.precip_mm).label("total"))
+        .where(
+            PrecipHourly.is_forecast == 0,
+            PrecipHourly.obs_time >= start,
+            PrecipHourly.obs_time <= latest,
+        )
+        .group_by(PrecipHourly.obs_time)
+        .order_by(PrecipHourly.obs_time)
+    )
+    point_id = _point_id(session, adcode)
+    if point_id:
+        stmt = stmt.where(PrecipHourly.point_id == point_id)
+
+    rows = session.execute(stmt).all()
+    return {
+        "adcode": adcode,
+        "start": start,
+        "end": latest,
+        "points": [{"time": r[0], "value": round(float(r[1] or 0), 1)} for r in rows],
+    }
+
+
+def spatial_map(session: Session, obs_time: str | None = None) -> dict[str, Any]:
+    t = obs_time or latest_observed_time(session)
+    if t is None:
+        return {"time": None, "points": []}
+    return {"time": t, "points": _map_points(session, t)}
+
+
+def spatial_timespan(
+    session: Session, *, start: str, end: str, max_frames: int = 48
+) -> list[dict[str, Any]]:
+    """取时间区间内的若干帧，供前端时间轴回放使用。"""
+    times = list(
+        session.scalars(
+            select(PrecipHourly.obs_time)
+            .where(
+                PrecipHourly.is_forecast == 0,
+                PrecipHourly.obs_time >= start,
+                PrecipHourly.obs_time <= end,
+            )
+            .distinct()
+            .order_by(PrecipHourly.obs_time)
+        ).all()
+    )
+    if not times:
+        return []
+
+    if len(times) > max_frames:
+        step = len(times) / max_frames
+        times = [times[min(int(i * step), len(times) - 1)] for i in range(max_frames)]
+
+    rows = session.execute(
+        select(PrecipHourly.obs_time, Region.adcode, PrecipHourly.precip_mm)
+        .join(GridPoint, GridPoint.id == PrecipHourly.point_id)
+        .join(Region, Region.adcode == GridPoint.region_adcode)
+        .where(PrecipHourly.obs_time.in_(times), PrecipHourly.is_forecast == 0)
+    ).all()
+
+    frames: dict[str, dict[str, float | None]] = {t: {} for t in times}
+    for obs_time, adcode, mm in rows:
+        frames[obs_time][adcode] = round(float(mm), 1) if mm is not None else None
+
+    return [{"time": t, "values": frames[t]} for t in times]
+
+
+# ------------------------------------------------------------------ trend
+
+def trend_daily(
+    session: Session, *, adcode: str | None, start: str, end: str
+) -> dict[str, Any]:
+    stmt = (
+        select(
+            PrecipDaily.obs_date,
+            func.sum(PrecipDaily.precip_sum).label("total"),
+            func.max(PrecipDaily.precip_sum).label("peak"),
+        )
+        .where(PrecipDaily.obs_date >= start, PrecipDaily.obs_date <= end)
+        .group_by(PrecipDaily.obs_date)
+        .order_by(PrecipDaily.obs_date)
+    )
+    point_id = _point_id(session, adcode)
+    if point_id:
+        stmt = stmt.where(PrecipDaily.point_id == point_id)
+    else:
+        # 不带 adcode 时按点位数取平均，避免「总和」随点位数变化
+        stmt = (
+            select(
+                PrecipDaily.obs_date,
+                func.avg(PrecipDaily.precip_sum).label("total"),
+                func.max(PrecipDaily.precip_sum).label("peak"),
+            )
+            .where(PrecipDaily.obs_date >= start, PrecipDaily.obs_date <= end)
+            .group_by(PrecipDaily.obs_date)
+            .order_by(PrecipDaily.obs_date)
+        )
+
+    rows = session.execute(stmt).all()
+    return {
+        "adcode": adcode,
+        "start": start,
+        "end": end,
+        "points": [
+            {"time": r[0], "value": round(float(r[1] or 0), 1), "max": round(float(r[2] or 0), 1)}
+            for r in rows
+        ],
+    }
+
+
+def trend_monthly(session: Session, *, adcode: str | None, year: int) -> dict[str, Any]:
+    month = func.substr(PrecipDaily.obs_date, 1, 7)
+    stmt = (
+        select(month.label("m"), func.sum(PrecipDaily.precip_sum).label("total"))
+        .where(func.substr(PrecipDaily.obs_date, 1, 4) == str(year))
+        .group_by(month)
+        .order_by(month)
+    )
+    point_id = _point_id(session, adcode)
+    if point_id:
+        stmt = stmt.where(PrecipDaily.point_id == point_id)
+
+    rows = session.execute(stmt).all()
+    return {
+        "adcode": adcode,
+        "year": year,
+        "points": [{"time": r[0], "value": round(float(r[1] or 0), 1)} for r in rows],
+    }
+
+
+def trend_anomaly(
+    session: Session,
+    *,
+    adcode: str | None = None,
+    year: int | None = None,
+    baseline_years: Sequence[int] = COMPLETE_YEARS,
+) -> list[dict[str, Any]]:
+    """降水距平：当月实际值 vs 同期基准值（仅用完整年份）。"""
+    target_year = year or date.today().year
+    point_id = _point_id(session, adcode)
+
+    def monthly_sums(y: int) -> dict[str, float]:
+        month = func.substr(PrecipDaily.obs_date, 1, 7)
+        stmt = (
+            select(month.label("m"), func.sum(PrecipDaily.precip_sum).label("total"))
+            .where(func.substr(PrecipDaily.obs_date, 1, 4) == str(y))
+            .group_by(month)
+        )
+        if point_id:
+            stmt = stmt.where(PrecipDaily.point_id == point_id)
+        return {m: float(t or 0) for m, t in session.execute(stmt).all()}
+
+    actual = monthly_sums(target_year)
+    baseline: dict[str, list[float]] = {}
+    for y in baseline_years:
+        for m, total in monthly_sums(y).items():
+            baseline.setdefault(m[5:], []).append(total)
+
+    result: list[dict[str, Any]] = []
+    for m in sorted(actual):
+        same_month = baseline.get(m[5:], [])
+        base = sum(same_month) / len(same_month) if same_month else 0.0
+        a = actual[m]
+        pct = round((a - base) / base * 100, 1) if base > 0 else None
+        result.append(
+            {
+                "month": m,
+                "actual": round(a, 1),
+                "baseline": round(base, 1),
+                "anomaly_pct": pct,
+            }
+        )
+    return result
+
+
+def trend_level_distribution(
+    session: Session, *, start: str | None = None, end: str | None = None, adcode: str | None = None
+) -> list[dict[str, Any]]:
+    stmt = select(PrecipDaily.rain_level, func.count().label("c")).group_by(PrecipDaily.rain_level)
+    if start:
+        stmt = stmt.where(PrecipDaily.obs_date >= start)
+    if end:
+        stmt = stmt.where(PrecipDaily.obs_date <= end)
+    point_id = _point_id(session, adcode)
+    if point_id:
+        stmt = stmt.where(PrecipDaily.point_id == point_id)
+
+    rows = session.execute(stmt.order_by(func.count().desc())).all()
+    order = ["无降水", "小雨", "中雨", "大雨", "暴雨", "大暴雨", "特大暴雨"]
+    items = [
+        {"rain_level": r[0] or "未知", "count": r[1], "color": LEVEL_COLORS.get(r[0] or "", _NO_RAIN_COLOR)}
+        for r in rows
+    ]
+    items.sort(key=lambda x: order.index(x["rain_level"]) if x["rain_level"] in order else 99)
+    return items
+
+
+def trend_extremes(
+    session: Session,
+    *,
+    start: str | None = None,
+    end: str | None = None,
+    adcode: str | None = None,
+    min_mm: float | None = None,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    """历史极端降水事件（单日单点），按日累计降序。
+
+    用于「预警统计」模块的极值榜；`min_mm` 可按国标阈值过滤
+    （例如 50 表示只看暴雨及以上）。
+    """
+    stmt = (
+        select(
+            GridPoint.region_adcode,
+            GridPoint.label,
+            Region.province,
+            PrecipDaily.obs_date,
+            PrecipDaily.precip_sum,
+            PrecipDaily.precip_max_hourly,
+            PrecipDaily.rain_hours,
+            PrecipDaily.rain_level,
+        )
+        .join(GridPoint, GridPoint.id == PrecipDaily.point_id)
+        .join(Region, Region.adcode == GridPoint.region_adcode)
+        .where(PrecipDaily.precip_sum > 0)
+        .order_by(PrecipDaily.precip_sum.desc())
+        .limit(limit)
+    )
+    if start:
+        stmt = stmt.where(PrecipDaily.obs_date >= start)
+    if end:
+        stmt = stmt.where(PrecipDaily.obs_date <= end)
+    if min_mm is not None:
+        stmt = stmt.where(PrecipDaily.precip_sum >= min_mm)
+    point_id = _point_id(session, adcode)
+    if point_id:
+        stmt = stmt.where(PrecipDaily.point_id == point_id)
+
+    return [
+        {
+            "adcode": r[0],
+            "name": r[1],
+            "province": r[2],
+            "obs_date": r[3],
+            "precip_sum": round(float(r[4] or 0), 1),
+            "precip_max_hourly": round(float(r[5]), 1) if r[5] is not None else None,
+            "rain_hours": int(r[6]) if r[6] is not None else None,
+            "rain_level": r[7],
+            "color": LEVEL_COLORS.get(r[7] or "", _NO_RAIN_COLOR),
+        }
+        for r in session.execute(stmt).all()
+    ]
+
+
+# ------------------------------------------------------------------ compare
+
+def compare_ranking(
+    session: Session, *, start: str, end: str, limit: int = 20
+) -> list[dict[str, Any]]:
+    rows = session.execute(
+        select(
+            GridPoint.region_adcode,
+            GridPoint.label,
+            Region.province,
+            func.sum(PrecipDaily.precip_sum).label("total"),
+            func.max(PrecipDaily.precip_max_hourly).label("peak"),
+        )
+        .join(GridPoint, GridPoint.id == PrecipDaily.point_id)
+        .join(Region, Region.adcode == GridPoint.region_adcode)
+        .where(PrecipDaily.obs_date >= start, PrecipDaily.obs_date <= end)
+        .group_by(GridPoint.id)
+        .order_by(func.sum(PrecipDaily.precip_sum).desc())
+        .limit(limit)
+    ).all()
+    return [
+        {
+            "adcode": r[0],
+            "name": r[1],
+            "province": r[2],
+            "total": round(float(r[3] or 0), 1),
+            "peak": round(float(r[4]), 1) if r[4] is not None else None,
+        }
+        for r in rows
+    ]
+
+
+def compare_multi(
+    session: Session, *, adcodes: Sequence[str], start: str, end: str
+) -> dict[str, Any]:
+    """多城市日降水序列对比。"""
+    id_by_adcode = {a: _point_id(session, a) for a in adcodes}
+    id_by_adcode = {a: pid for a, pid in id_by_adcode.items() if pid}
+    if not id_by_adcode:
+        return {"start": start, "end": end, "series": []}
+
+    regions = region_map(session)
+    rows = session.execute(
+        select(PrecipDaily.point_id, PrecipDaily.obs_date, PrecipDaily.precip_sum)
+        .where(
+            PrecipDaily.point_id.in_(list(id_by_adcode.values())),
+            PrecipDaily.obs_date >= start,
+            PrecipDaily.obs_date <= end,
+        )
+        .order_by(PrecipDaily.obs_date)
+    ).all()
+
+    data: dict[int, dict[str, float]] = {pid: {} for pid in id_by_adcode.values()}
+    for pid, obs_date, total in rows:
+        data[pid][obs_date] = round(float(total or 0), 1)
+
+    series = [
+        {
+            "adcode": adcode,
+            "name": regions.get(adcode, {}).get("name", adcode),
+            "points": [
+                {"time": d, "value": v} for d, v in sorted(data[pid].items())
+            ],
+        }
+        for adcode, pid in id_by_adcode.items()
+    ]
+    return {"start": start, "end": end, "series": series}
+
+
+def compare_boxplot(
+    session: Session, *, start: str, end: str, limit: int = 10
+) -> list[dict[str, Any]]:
+    """各点位日降水的箱线统计（取区间内累计最多的前 limit 个点位）。"""
+    top = compare_ranking(session, start=start, end=end, limit=limit)
+    if not top:
+        return []
+
+    adcodes = [t["adcode"] for t in top]
+    id_by_adcode = {a: _point_id(session, a) for a in adcodes}
+    id_by_adcode = {a: pid for a, pid in id_by_adcode.items() if pid}
+    inv = {pid: a for a, pid in id_by_adcode.items()}
+    if not inv:
+        return []
+
+    rows = session.execute(
+        select(PrecipDaily.point_id, PrecipDaily.precip_sum).where(
+            PrecipDaily.point_id.in_(list(inv)),
+            PrecipDaily.obs_date >= start,
+            PrecipDaily.obs_date <= end,
+        )
+    ).all()
+
+    grouped: dict[int, list[float]] = {}
+    for pid, total in rows:
+        grouped.setdefault(pid, []).append(float(total or 0))
+
+    result: list[dict[str, Any]] = []
+    for pid, values in grouped.items():
+        if not values:
+            continue
+        adcode = inv[pid]
+        stats = _five_number(values)
+        result.append(
+            {
+                "adcode": adcode,
+                "name": next((t["name"] for t in top if t["adcode"] == adcode), adcode),
+                "province": next((t["province"] for t in top if t["adcode"] == adcode), ""),
+                **stats,
+            }
+        )
+    result.sort(key=lambda x: x["median"], reverse=True)
+    return result
+
+
+# ------------------------------------------------------------------ alerts / admin
+
+def list_alerts(session: Session, *, limit: int = 50) -> list[dict[str, Any]]:
+    rows = session.scalars(
+        select(WeatherAlert).order_by(WeatherAlert.published_at.desc()).limit(limit)
+    ).all()
+    return [
+        {
+            "id": a.id,
+            "region_adcode": a.region_adcode,
+            "alert_type": a.alert_type,
+            "alert_level": a.alert_level,
+            "title": a.title,
+            "published_at": a.published_at,
+            "source": a.source,
+        }
+        for a in rows
+    ]
+
+
+def list_collect_logs(session: Session, *, limit: int = 50) -> list[dict[str, Any]]:
+    rows = session.scalars(select(CollectLog).order_by(CollectLog.id.desc()).limit(limit)).all()
+    return [
+        {
+            "id": r.id,
+            "source": r.source,
+            "mode": r.mode,
+            "status": r.status,
+            "points_total": r.points_total,
+            "rows_upserted": r.rows_upserted,
+            "gap_filled_hours": r.gap_filled_hours,
+            "started_at": r.started_at,
+            "finished_at": r.finished_at,
+            "error_msg": r.error_msg,
+        }
+        for r in rows
+    ]
+
+
+def data_quality(session: Session) -> dict[str, Any]:
+    hourly_rows = session.scalar(select(func.count()).select_from(PrecipHourly)) or 0
+    hourly_null = (
+        session.scalar(
+            select(func.count()).select_from(PrecipHourly).where(PrecipHourly.precip_mm.is_(None))
+        )
+        or 0
+    )
+    observed_rows = (
+        session.scalar(
+            select(func.count()).select_from(PrecipHourly).where(PrecipHourly.is_forecast == 0)
+        )
+        or 0
+    )
+    forecast_rows = hourly_rows - observed_rows
+
+    observed_start, observed_end = session.execute(
+        select(func.min(PrecipHourly.obs_time), func.max(PrecipHourly.obs_time)).where(
+            PrecipHourly.is_forecast == 0
+        )
+    ).one()
+    distinct_hours = (
+        session.scalar(
+            select(func.count(func.distinct(PrecipHourly.obs_time))).where(
+                PrecipHourly.is_forecast == 0
+            )
+        )
+        or 0
+    )
+
+    expected_hours = 0
+    if observed_start and observed_end:
+        delta = datetime.strptime(observed_end, TIME_FMT) - datetime.strptime(observed_start, TIME_FMT)
+        expected_hours = int(delta.total_seconds() // 3600) + 1
+
+    coverage = round(100 * distinct_hours / expected_hours, 2) if expected_hours else 0.0
+
+    daily_rows = session.scalar(select(func.count()).select_from(PrecipDaily)) or 0
+    daily_without_detail = (
+        session.scalar(
+            select(func.count()).select_from(PrecipDaily).where(PrecipDaily.rain_hours.is_(None))
+        )
+        or 0
+    )
+
+    collect_total = session.scalar(select(func.count()).select_from(CollectLog)) or 0
+    collect_failed = (
+        session.scalar(
+            select(func.count()).select_from(CollectLog).where(CollectLog.status == "failed")
+        )
+        or 0
+    )
+    last_log = session.scalars(select(CollectLog).order_by(CollectLog.id.desc()).limit(1)).first()
+
+    return {
+        "hourly_rows": hourly_rows,
+        "hourly_null": hourly_null,
+        "hourly_null_pct": round(100 * hourly_null / hourly_rows, 2) if hourly_rows else 0.0,
+        "hourly_observed_rows": observed_rows,
+        "hourly_forecast_rows": forecast_rows,
+        "observed_start": observed_start,
+        "observed_end": observed_end,
+        "distinct_hours": distinct_hours,
+        "expected_hours": expected_hours,
+        "missing_hours": max(expected_hours - distinct_hours, 0),
+        "coverage_pct": coverage,
+        "daily_rows": daily_rows,
+        "daily_with_detail": daily_rows - daily_without_detail,
+        "daily_without_detail": daily_without_detail,
+        "collect_total": collect_total,
+        "collect_success": collect_total - collect_failed,
+        "collect_failed": collect_failed,
+        "last_collect_at": last_log.started_at if last_log else None,
+    }
+
+
+# ------------------------------------------------------------------ 导出
+
+def iter_csv(
+    session: Session,
+    *,
+    kind: str = "daily",
+    adcode: str | None = None,
+    start: str | None = None,
+    end: str | None = None,
+) -> Iterator[str]:
+    """以 CSV 文本流形式导出数据（供 StreamingResponse 使用）。"""
+    buffer: list[str] = []
+
+    def flush() -> str:
+        chunk = "".join(buffer)
+        buffer.clear()
+        return chunk
+
+    regions = region_map(session)
+
+    if kind == "hourly":
+        buffer.append("adcode,name,province,obs_time,precip_mm,is_forecast\n")
+        stmt = (
+            select(
+                GridPoint.region_adcode,
+                GridPoint.label,
+                Region.province,
+                PrecipHourly.obs_time,
+                PrecipHourly.precip_mm,
+                PrecipHourly.is_forecast,
+            )
+            .join(GridPoint, GridPoint.id == PrecipHourly.point_id)
+            .join(Region, Region.adcode == GridPoint.region_adcode)
+            .order_by(PrecipHourly.obs_time, GridPoint.region_adcode)
+        )
+        point_id = _point_id(session, adcode)
+        if point_id:
+            stmt = stmt.where(PrecipHourly.point_id == point_id)
+        if start:
+            stmt = stmt.where(PrecipHourly.obs_time >= start)
+        if end:
+            stmt = stmt.where(PrecipHourly.obs_time <= end)
+
+        for row in session.execute(stmt).yield_per(2000):
+            buffer.append(
+                f"{row[0]},{row[1]},{row[2]},{row[3]},"
+                f"{'' if row[4] is None else row[4]},{row[5]}\n"
+            )
+            if len(buffer) >= 500:
+                yield flush()
+    else:
+        buffer.append("adcode,name,province,obs_date,precip_sum,precip_max_hourly,rain_hours,rain_level\n")
+        stmt = (
+            select(
+                GridPoint.region_adcode,
+                GridPoint.label,
+                Region.province,
+                PrecipDaily.obs_date,
+                PrecipDaily.precip_sum,
+                PrecipDaily.precip_max_hourly,
+                PrecipDaily.rain_hours,
+                PrecipDaily.rain_level,
+            )
+            .join(GridPoint, GridPoint.id == PrecipDaily.point_id)
+            .join(Region, Region.adcode == GridPoint.region_adcode)
+            .order_by(PrecipDaily.obs_date, GridPoint.region_adcode)
+        )
+        point_id = _point_id(session, adcode)
+        if point_id:
+            stmt = stmt.where(PrecipDaily.point_id == point_id)
+        if start:
+            stmt = stmt.where(PrecipDaily.obs_date >= start)
+        if end:
+            stmt = stmt.where(PrecipDaily.obs_date <= end)
+
+        for row in session.execute(stmt).yield_per(2000):
+            rh = "" if row[6] is None else row[6]
+            mh = "" if row[5] is None else row[5]
+            buffer.append(
+                f"{row[0]},{row[1]},{row[2]},{row[3]},{row[4]},{mh},{rh},{row[7] or ''}\n"
+            )
+            if len(buffer) >= 500:
+                yield flush()
+
+    if buffer:
+        yield flush()

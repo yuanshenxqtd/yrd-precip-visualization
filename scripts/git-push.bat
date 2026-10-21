@@ -2,7 +2,6 @@
 chcp 65001 >nul
 title YRD Precip - Commit and Push
 REM ASCII-only on purpose - see the header note in setup.bat
-setlocal enabledelayedexpansion
 
 for %%I in ("%~dp0..") do set "ROOT=%%~fI"
 cd /d "%ROOT%"
@@ -36,11 +35,16 @@ echo.
 
 REM Optional: pass the message as the first argument to skip the prompt
 set "MSG=%~1"
-if not "%MSG%"=="" goto :have_msg
+if not "%MSG%"=="" goto :validate_msg
 
 echo Type a commit message ^(empty = cancel^):
 set /p MSG=
-if "%MSG%"=="" goto :cancelled
+
+:validate_msg
+REM An empty line leaves a single space in MSG, so check both cases
+if not defined MSG goto :cancelled
+set "MSG_TRIMMED=%MSG: =%"
+if "%MSG_TRIMMED%"=="" goto :cancelled
 
 :have_msg
 echo.

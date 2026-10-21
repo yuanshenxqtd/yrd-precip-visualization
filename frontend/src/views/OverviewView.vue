@@ -286,7 +286,8 @@ onMounted(load)
           <div><dt>采集点 / 行政区划</dt><dd class="text-mono">{{ app.meta?.points_total ?? '—' }} / {{ app.meta?.regions_total ?? '—' }}</dd></div>
           <div><dt>小时记录</dt><dd class="text-mono">{{ app.meta ? formatNumber(app.meta.hourly_rows) : '—' }}</dd></div>
           <div><dt>日汇总记录</dt><dd class="text-mono">{{ app.meta ? formatNumber(app.meta.daily_rows) : '—' }}</dd></div>
-          <div><dt>小时数据范围</dt><dd class="text-mono">{{ shortTime(app.meta?.hourly_start) }} ~ {{ shortTime(app.meta?.hourly_end) }}</dd></div>
+          <div><dt>实况数据范围</dt><dd class="text-mono">{{ shortTime(app.meta?.observed_start) }} ~ {{ shortTime(app.meta?.observed_end) }}</dd></div>
+          <div><dt>预报数据至</dt><dd class="text-mono">{{ shortTime(app.meta?.forecast_end) }}</dd></div>
           <div><dt>日数据范围</dt><dd class="text-mono">{{ app.meta?.daily_start ?? '—' }} ~ {{ app.meta?.daily_end ?? '—' }}</dd></div>
           <div><dt>最近采集</dt><dd class="text-mono">{{ app.meta?.last_collect_at ?? '—' }} · {{ app.meta?.last_collect_status ?? '—' }}</dd></div>
           <div><dt>采集间隔</dt><dd class="text-mono">每 {{ app.meta?.collect_interval_minutes ?? 30 }} 分钟</dd></div>

@@ -27,16 +27,21 @@ const clock = computed(() => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 })
 
-const statusText = computed(() => {
-  if (app.error) return '后端未连接'
-  if (!app.meta) return '连接中'
-  return app.collectHealthy ? '采集正常' : `上次采集 ${app.meta.last_collect_status ?? '未知'}`
-})
+const statusText = computed(() => app.freshnessLabel)
 
 const statusTone = computed(() => {
-  if (app.error) return 'danger'
-  if (!app.meta) return 'idle'
-  return app.collectHealthy ? 'ok' : 'warning'
+  switch (app.freshness) {
+    case 'ok':
+      return 'ok'
+    case 'stale':
+      return 'warning'
+    case 'expired':
+    case 'failed':
+    case 'offline':
+      return 'danger'
+    default:
+      return 'idle'
+  }
 })
 </script>
 
@@ -48,9 +53,11 @@ const statusTone = computed(() => {
       </button>
       <div>
         <div class="header__title">{{ moduleTitle }}</div>
-        <div class="header__sub">
+        <div class="header__sub" :title="app.freshnessHint">
           数据时刻
           <span class="text-mono">{{ shortTime(app.latestObsTime) }}</span>
+          <span class="header__dot">·</span>
+          <span :class="{ 'header__age--warn': app.freshnessWarned }">{{ app.ageText }}</span>
           <span class="header__dot">·</span>
           同步于 {{ relativeTime(app.lastSyncAt) }}
         </div>
@@ -58,7 +65,7 @@ const statusTone = computed(() => {
     </div>
 
     <div class="header__right">
-      <span class="pill" :class="`pill--${statusTone}`">
+      <span class="pill" :class="`pill--${statusTone}`" :title="app.freshnessHint">
         <i class="pill__dot"></i>{{ statusText }}
       </span>
       <span class="header__clock text-mono">{{ clock }}</span>
@@ -104,6 +111,12 @@ const statusTone = computed(() => {
 .header__dot {
   margin: 0 6px;
   color: var(--text-3);
+}
+
+/* 数据偏旧/过期时，把「多久以前」标成警告色 */
+.header__age--warn {
+  color: var(--warning);
+  font-weight: 600;
 }
 
 .header__clock {

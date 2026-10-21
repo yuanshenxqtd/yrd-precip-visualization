@@ -7,7 +7,14 @@ export interface MetaInfo {
   hourly_rows: number
   daily_rows: number
   hourly_start: string | null
+  /** 含预报，可能落在未来 —— 不能用来判断数据时效 */
   hourly_end: string | null
+  observed_start: string | null
+  /** 实况数据最新时刻 —— 判断数据时效只用这个字段 */
+  observed_end: string | null
+  forecast_end: string | null
+  /** 服务器当前时间，用于抵消客户端时钟偏差 */
+  server_now: string
   daily_start: string | null
   daily_end: string | null
   last_collect_at: string | null

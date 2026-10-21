@@ -91,6 +91,19 @@ def get_meta(session: Session) -> dict[str, Any]:
     hourly_start, hourly_end = session.execute(
         select(func.min(PrecipHourly.obs_time), func.max(PrecipHourly.obs_time))
     ).one()
+
+    # 实况与预报必须分开暴露：hourly_end 含预报，可能落在未来若干天，
+    # 用它来表示「数据时刻」会误导用户（实测预报可到 6 天后）。
+    # 数据时效判断只能用 observed_end。
+    observed_start, observed_end = session.execute(
+        select(func.min(PrecipHourly.obs_time), func.max(PrecipHourly.obs_time)).where(
+            PrecipHourly.is_forecast == 0
+        )
+    ).one()
+    forecast_end = session.scalar(
+        select(func.max(PrecipHourly.obs_time)).where(PrecipHourly.is_forecast == 1)
+    )
+
     daily_start, daily_end = session.execute(
         select(func.min(PrecipDaily.obs_date), func.max(PrecipDaily.obs_date))
     ).one()
@@ -106,6 +119,10 @@ def get_meta(session: Session) -> dict[str, Any]:
         "daily_rows": daily_rows,
         "hourly_start": hourly_start,
         "hourly_end": hourly_end,
+        "observed_start": observed_start,
+        "observed_end": observed_end,
+        "forecast_end": forecast_end,
+        "server_now": datetime.now().replace(microsecond=0).isoformat(),
         "daily_start": daily_start,
         "daily_end": daily_end,
         "last_collect_at": last_log.started_at if last_log else None,

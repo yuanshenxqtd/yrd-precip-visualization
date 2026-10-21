@@ -40,6 +40,19 @@ onMounted(async () => {
         </span>
       </div>
 
+      <!-- 数据时效警示：偏旧 / 过期时出现，避免用户把旧数据当成最新 -->
+      <div
+        v-else-if="app.freshnessWarned"
+        class="layout__banner"
+        :class="`layout__banner--${app.freshness}`"
+      >
+        <strong>{{ app.freshnessLabel }}：</strong>
+        <span>{{ app.freshnessHint }}</span>
+        <span class="layout__banner-hint">
+          采集器未运行时数据不会更新；停机期间的数据缺口会在下次采集时自动补齐。
+        </span>
+      </div>
+
       <main class="layout__content">
         <RouterView v-slot="{ Component }">
           <Transition name="fade" mode="out-in">
@@ -84,6 +97,19 @@ onMounted(async () => {
   color: #ffd9d4;
   background: rgba(231, 76, 60, 0.14);
   border-bottom: 1px solid rgba(231, 76, 60, 0.3);
+}
+
+/* 偏旧：黄色提示；过期：红色（与后端断连同色但文案不同） */
+.layout__banner--stale {
+  color: #ffe6a8;
+  background: rgba(245, 215, 110, 0.12);
+  border-bottom-color: rgba(245, 215, 110, 0.3);
+}
+
+.layout__banner--expired {
+  color: #ffd9d4;
+  background: rgba(231, 76, 60, 0.14);
+  border-bottom-color: rgba(231, 76, 60, 0.3);
 }
 
 .layout__banner-hint {

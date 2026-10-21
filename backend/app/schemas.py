@@ -18,7 +18,15 @@ class MetaOut(BaseModel):
     hourly_rows: int = Field(description="逐小时降水总行数")
     daily_rows: int = Field(description="日汇总总行数")
     hourly_start: str | None = Field(default=None, description="小时数据起始时刻")
-    hourly_end: str | None = Field(default=None, description="小时数据结束时刻")
+    hourly_end: str | None = Field(
+        default=None, description="小时数据结束时刻（含预报，可能在未来）"
+    )
+    observed_start: str | None = Field(default=None, description="实况数据起始时刻")
+    observed_end: str | None = Field(
+        default=None, description="实况数据最新时刻 —— 判断数据时效只能用这个字段"
+    )
+    forecast_end: str | None = Field(default=None, description="预报数据最远时刻")
+    server_now: str = Field(description="服务器当前时间（供前端计算数据时效，避免时钟偏差）")
     daily_start: str | None = Field(default=None, description="日数据起始日期")
     daily_end: str | None = Field(default=None, description="日数据结束日期")
     last_collect_at: str | None = Field(default=None, description="最近一次采集开始时间")

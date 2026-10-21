@@ -105,6 +105,7 @@ $env:YRD_NO_PAUSE = '1'; & cmd /c "scripts\stop_all.bat"
 | — | `scripts\status.bat` | 查看 8000 / 5173 端口是否在监听、被哪个进程占用 |
 | — | `scripts\stop_all.bat` | **按端口停止服务**（无论谁启动的都能停，含子进程） |
 | — | `scripts\start_autocollect.bat` | 前台定时采集（关窗口即停） |
+| — | `scripts\git-push.bat` | 提交并推送到 GitHub（双击 → 输入说明 → 自动 add / commit / push） |
 
 ### 关不掉服务怎么办
 

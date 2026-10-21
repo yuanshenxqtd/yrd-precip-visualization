@@ -92,7 +92,36 @@ $env:YRD_NO_PAUSE = '1'; & cmd /c "scripts\stop_all.bat"
 
 ## 快速开始
 
-按顺序执行（前三步已完成，可重复运行）：
+### 日常使用：一键启动（推荐）
+
+**双击 `scripts\start.bat`** 即可 —— 它会按顺序完成：
+
+```
+环境自检 → 后端(8000) → 等就绪 → 前端(5173) → 等就绪
+        → 自动打开浏览器 → 定时采集器(每 30 分钟) → 打印访问地址
+```
+
+特点：
+
+- **等就绪再继续**：后台轮询 `/api/health` 与前端首页，真的起来了才走下一步，不会出现"页面打开但后端还没起"
+- **可重复运行**：已启动的部分会自动跳过（后端/前端按端口判断，采集器按 PID 锁判断），不会重复启动
+- **采集器防重复**：`collector/scheduler.py` 内置单实例锁（`.tmp/scheduler.pid`），误开两个也不会把 API 额度翻倍
+- 每个服务各自一个窗口，**关掉哪个窗口就停哪个服务**
+
+可选参数：
+
+| 命令 | 作用 |
+|---|---|
+| `scripts\start.bat` | 全部启动（含浏览器与采集器） |
+| `scripts\start.bat --no-collect` | 不启动定时采集 |
+| `scripts\start.bat --no-browser` | 不自动打开浏览器 |
+| `scripts\start.bat lan` | 监听 `0.0.0.0`，同 WiFi 的手机可直接访问 |
+
+停止：`scripts\stop_all.bat`（停后端与前端），采集器窗口单独关掉。
+
+### 首次部署：按顺序执行
+
+前三步已完成，可重复运行：
 
 | 步骤 | 命令 | 说明 |
 |---|---|---|
@@ -100,11 +129,12 @@ $env:YRD_NO_PAUSE = '1'; & cmd /c "scripts\stop_all.bat"
 | 2 | `scripts\init_db.bat` | 建表 + 下载合并地图 + 56 点位入库 |
 | 3 | `scripts\backfill.bat` | 回填 3 年日数据 + 1 年小时数据（约 4 分钟） |
 | 4 | `scripts\collect_once.bat` | 采集一次实时数据（约 3 秒） |
-| 5 | `scripts\run_backend.bat` | 启动后端 → <http://127.0.0.1:8000/docs> |
-| 6 | `scripts\run_frontend.bat` | 启动前端 → <http://127.0.0.1:5173> |
+| 5 | **`scripts\start.bat`** | **一键启动整套系统（推荐）** |
+| — | `scripts\run_backend.bat` | 只启动后端 → <http://127.0.0.1:8000/docs> |
+| — | `scripts\run_frontend.bat` | 只启动前端 → <http://127.0.0.1:5173> |
 | — | `scripts\status.bat` | 查看 8000 / 5173 端口是否在监听、被哪个进程占用 |
 | — | `scripts\stop_all.bat` | **按端口停止服务**（无论谁启动的都能停，含子进程） |
-| — | `scripts\start_autocollect.bat` | 前台定时采集（关窗口即停） |
+| — | `scripts\start_autocollect.bat` | 单独启动前台定时采集（关窗口即停） |
 | — | `scripts\git-push.bat` | 提交并推送到 GitHub（双击 → 输入说明 → 自动 add / commit / push） |
 
 ### 关不掉服务怎么办
@@ -137,6 +167,11 @@ scripts\run_frontend.bat lan
 |---|---|---|
 | **A · 按需采集**（默认） | 双击 `scripts\collect_once.bat` | 立即采集一次（约 3 秒）后退出 |
 | **B · 定时采集** | 双击 `scripts\start_autocollect.bat` | 立即采一次，之后**每 30 分钟**采一次；**关闭窗口或关机即停止** |
+| **C · 一键启动**（推荐） | 双击 `scripts\start.bat` | 后端 + 前端 + 浏览器 + **B 模式采集器** 一起起来；重复运行会自动跳过已启动的部分 |
+
+> `start.bat` 内部调用的就是 A/B 两个脚本，所以行为完全一致；
+> 它只是把「起服务」和「起采集」这两件事合并成一次点击。
+> 单独启动时，采集器同样受单实例锁保护，误开两个不会重复消耗 API 额度。
 
 ### 关于 B 模式的几点说明
 

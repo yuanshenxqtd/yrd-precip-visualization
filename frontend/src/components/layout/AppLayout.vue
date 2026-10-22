@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 
 import AppHeader from './AppHeader.vue'
 import AppSidebar from './AppSidebar.vue'
+import FocusBar from './FocusBar.vue'
 import PresentationBar from './PresentationBar.vue'
 import DetailDrawer from '@/components/common/DetailDrawer.vue'
 import { useAppStore } from '@/stores/app'
@@ -40,6 +41,9 @@ onBeforeUnmount(() => app.disposeDemo())
 
     <div class="layout__main">
       <AppHeader v-if="!app.demoMode" />
+
+      <!-- 联动状态：聚焦某个点位时出现，可一键退回全区 -->
+      <FocusBar />
 
       <div v-if="app.error" class="layout__banner">
         <strong>无法连接后端：</strong>

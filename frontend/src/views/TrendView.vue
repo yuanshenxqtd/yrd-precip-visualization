@@ -14,7 +14,8 @@ import { daysAgo, formatNumber, today } from '@/utils/format'
 
 const filter = useFilterStore()
 
-const adcode = ref<string | null>(null)
+/** 区域选择直接读全局聚焦状态，与其他模块共用同一份选择 */
+const adcode = computed(() => filter.selectedAdcode)
 const rangeDays = ref(90)
 const year = ref(new Date().getFullYear())
 const customStart = ref(daysAgo(89))
@@ -112,7 +113,11 @@ onMounted(() => {
         </p>
       </div>
       <div class="controls">
-        <RegionSelect v-model="adcode" label="区域" />
+        <RegionSelect
+          :model-value="adcode"
+          label="区域"
+          @update:model-value="filter.select($event)"
+        />
       </div>
     </div>
 

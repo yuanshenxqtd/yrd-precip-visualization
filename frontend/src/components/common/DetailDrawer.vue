@@ -48,9 +48,16 @@ function switchWindow(index: number): void {
   if (w) void detail.setWindow(w.hours, w.days)
 }
 
-/** 把该点位设为全局筛选目标（后续跨模块联动的入口） */
-function focusRegion(): void {
-  if (detail.adcode) filter.select(detail.adcode)
+/** 当前抽屉里的点位是否就是全局聚焦的点位 */
+const isFocused = computed(
+  () => !!detail.adcode && filter.selectedAdcode === detail.adcode,
+)
+
+/** 设为全局聚焦；已聚焦时再次点击则取消（联动可撤销） */
+function toggleFocus(): void {
+  if (!detail.adcode) return
+  if (isFocused.value) filter.clearFocus()
+  else filter.select(detail.adcode)
 }
 
 function onKeydown(event: KeyboardEvent): void {
@@ -229,7 +236,9 @@ onBeforeUnmount(() => {
 
           <!-- 底部 -->
           <footer v-if="data" class="drawer__foot">
-            <button class="btn" @click="focusRegion">在全局筛选中聚焦该点位</button>
+            <button class="btn" :class="{ 'btn--active': isFocused }" @click="toggleFocus">
+              {{ isFocused ? '已聚焦 · 点击取消' : '在全局筛选中聚焦该点位' }}
+            </button>
             <span class="drawer__foot-hint text-muted">
               数据来源：{{ data.region.name }} 采集点 · 56 个点位之一
             </span>
@@ -491,6 +500,14 @@ onBeforeUnmount(() => {
 
 .btn:hover {
   border-color: var(--panel-border-hover);
+}
+
+/* 已聚焦状态：按钮反色，明确「现在就是聚焦在这个点位」 */
+.btn--active {
+  color: #04121e;
+  font-weight: 600;
+  background: linear-gradient(180deg, var(--accent-light), var(--accent));
+  border-color: transparent;
 }
 
 .drawer__foot-hint {

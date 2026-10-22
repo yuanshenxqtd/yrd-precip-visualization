@@ -5,6 +5,8 @@ import { fetchRegionDetail } from '@/api'
 import { describeError } from '@/api/client'
 import type { RegionDetail } from '@/types'
 
+import { useFilterStore } from './filter'
+
 /**
  * 点位下钻抽屉的全局状态。
  *
@@ -44,6 +46,11 @@ export const useDetailStore = defineStore('detail', () => {
   /** 打开抽屉并载入指定点位（同一 adcode 且已有数据时不重复请求） */
   async function open(code: string): Promise<void> {
     visible.value = true
+
+    // 联动：打开详情的同时把全局筛选切到该点位。
+    // 关掉抽屉后，各页图表已经切到这个点位上了，不会「点完什么都没变」。
+    useFilterStore().select(code)
+
     if (adcode.value === code && detail.value) return
     adcode.value = code
     detail.value = null

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
 import { fetchCollectLogs, fetchRealtimeLatest, fetchTimeseries } from '@/api'
 import { describeError } from '@/api/client'
@@ -20,7 +20,8 @@ const detail = useDetailStore()
 const latest = ref<RealtimeLatest | null>(null)
 const series = ref<TrendPoint[]>([])
 const logs = ref<CollectLog[]>([])
-const adcode = ref<string | null>(null)
+/** 区域选择直接读全局聚焦状态，与其他模块共用同一份选择 */
+const adcode = computed(() => filter.selectedAdcode)
 const hours = ref(48)
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -74,6 +75,11 @@ async function loadSeries(): Promise<void> {
     error.value = describeError(err)
   }
 }
+
+// 全局聚焦变化时（例如从地图上点了另一个城市），序列跟着切
+watch(adcode, () => {
+  void loadSeries()
+})
 
 onMounted(loadAll)
 </script>
@@ -131,7 +137,11 @@ onMounted(loadAll)
       <header class="panel__header">
         <div class="panel__title">逐小时降水序列</div>
         <div class="controls">
-          <RegionSelect v-model="adcode" label="区域" @update:model-value="loadSeries" />
+          <RegionSelect
+            :model-value="adcode"
+            label="区域"
+            @update:model-value="filter.select($event)"
+          />
           <div class="seg">
             <button
               v-for="w in WINDOWS"

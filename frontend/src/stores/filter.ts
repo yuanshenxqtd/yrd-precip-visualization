@@ -43,6 +43,16 @@ export const useFilterStore = defineStore('filter', () => {
 
   const selectedName = computed(() => selected.value?.name ?? '长三角全区')
 
+  /** 是否处于「聚焦某个点位」状态（全区时为 false） */
+  const hasFocus = computed(() => selectedAdcode.value !== null)
+
+  /** 聚焦点位名称；未聚焦时为空串（与 selectedName 的「全区」兜底区分开） */
+  const focusName = computed(() => (hasFocus.value ? (selected.value?.name ?? '') : ''))
+
+  const focusProvince = computed(() => (hasFocus.value ? (selected.value?.province ?? '') : ''))
+
+  const focusLevel = computed(() => (hasFocus.value ? (selected.value?.level ?? '') : ''))
+
   async function loadRegions(): Promise<void> {
     if (loaded.value) return
     if (pending) return pending
@@ -67,6 +77,11 @@ export const useFilterStore = defineStore('filter', () => {
     selectedAdcode.value = adcode
   }
 
+  /** 手动清空聚焦，回到全区 */
+  function clearFocus(): void {
+    selectedAdcode.value = null
+  }
+
   function toggleCompare(adcode: string): void {
     const list = compareAdcodes.value
     const index = list.indexOf(adcode)
@@ -85,8 +100,13 @@ export const useFilterStore = defineStore('filter', () => {
     nameByAdcode,
     selected,
     selectedName,
+    hasFocus,
+    focusName,
+    focusProvince,
+    focusLevel,
     loadRegions,
     select,
+    clearFocus,
     toggleCompare,
   }
 })

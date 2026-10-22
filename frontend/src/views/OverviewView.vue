@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
 import {
   fetchLevelDistribution,
@@ -76,6 +76,24 @@ const mapRangeText = computed(() => {
 const maxRankingTotal = computed(() => ranking.value.reduce((max, item) => Math.max(max, item.total), 0))
 const dry = computed(() => (summary.value?.sum_24h_mm ?? 0) === 0)
 
+/**
+ * 聚焦点位后，把「近 24 小时全区降水」这张图切成该点位的序列。
+ *
+ * 这是联动在总览页上的可见反馈 —— 否则用户点了地图只会看到一条提示条，
+ * 会觉得「点了但什么都没变」。
+ */
+async function loadSeries(): Promise<void> {
+  try {
+    const data = await fetchTimeseries({
+      hours: 24,
+      adcode: filter.selectedAdcode ?? undefined,
+    })
+    series.value = data.points
+  } catch (err) {
+    error.value = describeError(err)
+  }
+}
+
 async function load(): Promise<void> {
   loading.value = true
   try {
@@ -90,9 +108,7 @@ async function load(): Promise<void> {
       fetchRanking({ limit: 10, hours: 24 }).then((data) => {
         ranking.value = data
       }),
-      fetchTimeseries({ hours: 24 }).then((data) => {
-        series.value = data.points
-      }),
+      loadSeries(),
       fetchLevelDistribution().then((data) => {
         levels.value = data
       }),
@@ -116,6 +132,14 @@ async function load(): Promise<void> {
     loading.value = false
   }
 }
+
+// 聚焦变化时只重拉趋势（其余图表看全区数据，不必整页重载）
+watch(
+  () => filter.selectedAdcode,
+  () => {
+    void loadSeries()
+  },
+)
 
 onMounted(load)
 </script>
@@ -234,7 +258,12 @@ onMounted(load)
           <p v-if="!ranking.length" class="empty">暂无数据</p>
           <ol v-else class="rank">
             <li v-for="(item, index) in ranking" :key="item.adcode">
-              <button type="button" class="rank__row" @click="detail.open(item.adcode)">
+              <button
+                type="button"
+                class="rank__row"
+                :class="{ 'rank__row--active': filter.selectedAdcode === item.adcode }"
+                @click="detail.open(item.adcode)"
+              >
                 <span class="rank__no" :class="{ 'rank__no--top': index < 3 }">{{ index + 1 }}</span>
                 <span class="rank__name">
                   {{ item.name }}
@@ -255,8 +284,12 @@ onMounted(load)
     <div class="grid-2">
       <section class="panel">
         <header class="panel__header">
-          <div class="panel__title">近 24 小时全区降水</div>
-          <span class="panel__subtitle">逐小时合计 · mm</span>
+          <div class="panel__title">
+            近 24 小时{{ filter.hasFocus ? filter.focusName : '全区' }}降水
+          </div>
+          <span class="panel__subtitle">
+            {{ filter.hasFocus ? '该点位逐小时降水 · mm' : '逐小时合计 · mm' }}
+          </span>
         </header>
         <div class="panel__body">
           <HourlyTrendChart :points="series" height="248px" />
@@ -451,6 +484,12 @@ onMounted(load)
 
 .rank__row:hover {
   background: rgba(120, 170, 255, 0.09);
+}
+
+/* 当前聚焦的行：让「联动到了哪个点位」在列表里也看得出来 */
+.rank__row--active {
+  background: rgba(58, 160, 224, 0.16);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .rank__row:focus-visible {

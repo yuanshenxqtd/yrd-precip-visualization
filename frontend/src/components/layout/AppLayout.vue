@@ -1,14 +1,22 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onBeforeUnmount, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 
 import AppHeader from './AppHeader.vue'
 import AppSidebar from './AppSidebar.vue'
+import PresentationBar from './PresentationBar.vue'
 import DetailDrawer from '@/components/common/DetailDrawer.vue'
 import { useAppStore } from '@/stores/app'
 import { useFilterStore } from '@/stores/filter'
 
 const app = useAppStore()
 const filter = useFilterStore()
+const route = useRoute()
+
+app.initDemo()
+
+// 支持用 ?demo=1 直接打开演示模式（start.bat demo 就是这么进来的）
+watch(() => route.query.demo, (value) => app.applyQueryDemo(value), { immediate: true })
 
 onMounted(async () => {
   await app.refresh()
@@ -21,14 +29,17 @@ onMounted(async () => {
     }
   }
 })
+
+onBeforeUnmount(() => app.disposeDemo())
 </script>
 
 <template>
   <div class="layout">
-    <AppSidebar />
+    <!-- 演示模式：整屏让给内容，导航改由底部浮动条承担 -->
+    <AppSidebar v-if="!app.demoMode" />
 
     <div class="layout__main">
-      <AppHeader />
+      <AppHeader v-if="!app.demoMode" />
 
       <div v-if="app.error" class="layout__banner">
         <strong>无法连接后端：</strong>
@@ -64,6 +75,9 @@ onMounted(async () => {
 
     <!-- 下钻抽屉：全站唯一实例，任何图表调用 detail.open(adcode) 即可唤起 -->
     <DetailDrawer />
+
+    <!-- 演示模式的浮动导航条（Esc 退出） -->
+    <PresentationBar v-if="app.demoMode" />
   </div>
 </template>
 

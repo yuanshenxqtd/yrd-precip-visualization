@@ -69,6 +69,9 @@ const statusTone = computed(() => {
         <i class="pill__dot"></i>{{ statusText }}
       </span>
       <span class="header__clock text-mono">{{ clock }}</span>
+      <button class="icon-btn" title="切换演示模式（隐藏导航、进入全屏）" @click="app.toggleDemo()">
+        <NavIcon name="present" />
+      </button>
       <button class="icon-btn" :disabled="app.loading" title="刷新数据" @click="app.refresh()">
         <NavIcon name="refresh" />
       </button>

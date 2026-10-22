@@ -43,6 +43,28 @@ function parseLocal(value: string | null): number | null {
   return new Date(y, mo - 1, d, h, mi, 0, 0).getTime()
 }
 
+/* ------------------------------------------------------------ 演示模式存储 */
+
+const DEMO_STORAGE_KEY = 'yrd-demo-mode'
+
+/** 用 sessionStorage 记住演示模式，刷新页面后仍保持（关标签页即失效） */
+function readStoredDemo(): boolean {
+  try {
+    return window.sessionStorage.getItem(DEMO_STORAGE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function writeStoredDemo(on: boolean): void {
+  try {
+    if (on) window.sessionStorage.setItem(DEMO_STORAGE_KEY, '1')
+    else window.sessionStorage.removeItem(DEMO_STORAGE_KEY)
+  } catch {
+    /* 隐私模式等场景忽略 */
+  }
+}
+
 /**
  * 应用级状态：后端连通性、数据规模、采集状态、侧边栏折叠、**数据时效**。
  * 所有模块页共用，避免各自重复请求 /meta 与 /admin/quality。
@@ -167,6 +189,101 @@ export const useAppStore = defineStore('app', () => {
     sidebarCollapsed.value = !sidebarCollapsed.value
   }
 
+  /* ------------------------------------------------------------ 演示模式 */
+
+  const demoMode = ref(readStoredDemo())
+  const isFullscreen = ref(false)
+
+  /**
+   * 主动退出全屏时的时间窗，用于区分「用户点全屏按钮退出」与「浏览器吞掉 Esc 退出」。
+   *
+   * 全屏状态下浏览器会自己消费 Esc 来退全屏、**不把按键派发给网页**，
+   * 所以只能靠 fullscreenchange 兜底：若不是我们主动退的，就一并退出演示模式，
+   * 避免出现「按一次 Esc 只退出了一半」的尴尬。
+   */
+  let suppressDemoExitUntil = 0
+
+  function syncFullscreen(): void {
+    const on = typeof document !== 'undefined' && document.fullscreenElement !== null
+    isFullscreen.value = on
+    if (!on && demoMode.value && Date.now() > suppressDemoExitUntil) {
+      demoMode.value = false
+      writeStoredDemo(false)
+    }
+    suppressDemoExitUntil = 0
+  }
+
+  /**
+   * 进入演示模式：隐藏侧边栏与页头，让内容占满整屏。
+   *
+   * `forceFullscreen` 为 false 时不主动请求全屏 —— 浏览器要求 requestFullscreen
+   * 必须由用户手势触发，带 ?demo=1 打开页面时无法满足，强行调用会被拒绝。
+   */
+  async function enterDemo(forceFullscreen = true): Promise<void> {
+    demoMode.value = true
+    writeStoredDemo(true)
+    if (!forceFullscreen) {
+      syncFullscreen()
+      return
+    }
+    try {
+      if (!document.fullscreenElement) await document.documentElement.requestFullscreen()
+    } catch {
+      /* 非用户手势或浏览器不支持：布局仍是演示态，只是没有全屏 */
+    }
+    syncFullscreen()
+  }
+
+  async function exitDemo(): Promise<void> {
+    demoMode.value = false
+    writeStoredDemo(false)
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen()
+    } catch {
+      /* ignore */
+    }
+    syncFullscreen()
+  }
+
+  function toggleDemo(): void {
+    if (demoMode.value) void exitDemo()
+    else void enterDemo()
+  }
+
+  async function toggleFullscreen(): Promise<void> {
+    try {
+      if (document.fullscreenElement) {
+        // 只退全屏、保留演示布局
+        suppressDemoExitUntil = Date.now() + 1000
+        await document.exitFullscreen()
+      } else {
+        await document.documentElement.requestFullscreen()
+      }
+    } catch {
+      /* ignore */
+    }
+    syncFullscreen()
+  }
+
+  /** 解析 URL 上的 ?demo=1 / ?demo=0 */
+  function applyQueryDemo(value: unknown): void {
+    const flag = Array.isArray(value) ? value[value.length - 1] : value
+    if (flag === '1' || flag === 'true') {
+      if (!demoMode.value) void enterDemo(false)
+    } else if (flag === '0' || flag === 'false') {
+      if (demoMode.value) void exitDemo()
+    }
+  }
+
+  function initDemo(): void {
+    syncFullscreen()
+    document.addEventListener('fullscreenchange', syncFullscreen)
+  }
+
+  function disposeDemo(): void {
+    document.removeEventListener('fullscreenchange', syncFullscreen)
+  }
+
   return {
     meta,
     quality,
@@ -183,7 +300,16 @@ export const useAppStore = defineStore('app', () => {
     freshnessWarned,
     freshnessHint,
     ageText,
+    demoMode,
+    isFullscreen,
     refresh,
     toggleSidebar,
+    enterDemo,
+    exitDemo,
+    toggleDemo,
+    toggleFullscreen,
+    applyQueryDemo,
+    initDemo,
+    disposeDemo,
   }
 })

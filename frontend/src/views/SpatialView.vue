@@ -210,7 +210,12 @@ onMounted(load)
         <div class="panel__body">
           <RainMap :data="mapData" height="470px" @select="detail.open($event)" />
           <div class="player">
-            <TimeScrubber v-model="index" :total="frames.length" :label="frameLabel" />
+            <TimeScrubber
+              v-model="index"
+              :total="frames.length"
+              :label="frameLabel"
+              :autoplay="app.demoMode"
+            />
           </div>
         </div>
       </section>

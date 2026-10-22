@@ -4,7 +4,7 @@
  *
  * 受控组件：索引由父组件持有（v-model），播放状态由组件内部管理。
  */
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = withDefaults(
   defineProps<{
@@ -13,8 +13,10 @@ const props = withDefaults(
     label?: string
     /** 单步基准间隔（毫秒），实际间隔 = baseInterval / speed */
     baseInterval?: number
+    /** 帧加载完成后自动开始播放（演示模式用） */
+    autoplay?: boolean
   }>(),
-  { label: '', baseInterval: 900 },
+  { label: '', baseInterval: 900, autoplay: false },
 )
 
 const emit = defineEmits<{ 'update:modelValue': [number] }>()
@@ -68,9 +70,18 @@ watch(speed, () => {
 watch(
   () => props.total,
   (total) => {
-    if (total <= 1) stop()
+    if (total <= 1) {
+      stop()
+      return
+    }
+    // 帧数变为可用时按需自动播放（演示模式）
+    if (props.autoplay && !playing.value) start()
   },
 )
+
+onMounted(() => {
+  if (props.autoplay && props.total > 1) start()
+})
 
 onBeforeUnmount(clearTimer)
 </script>

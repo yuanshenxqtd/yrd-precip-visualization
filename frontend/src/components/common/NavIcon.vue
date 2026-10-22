@@ -17,6 +17,7 @@ const PATHS: Record<string, string> = {
   menu: 'M4 7h16M4 12h16M4 17h16',
   close: 'M6 6l12 12M18 6L6 18',
   focus: 'M12 4.5v3M12 16.5v3M4.5 12h3M16.5 12h3M8.5 8.5h7v7h-7z',
+  present: 'M3.5 5.5h17v11h-17zM9.5 20h5M12 16.5V20',
 }
 </script>
 

@@ -13,6 +13,9 @@ REM   start.bat                 start everything
 REM   start.bat --no-collect    skip the scheduled collector
 REM   start.bat --no-browser    do not open the browser
 REM   start.bat lan             listen on 0.0.0.0 (phones on the same WiFi)
+REM   start.bat demo            open the rainstorm replay in presentation layout
+REM
+REM Flags can be combined, e.g.  start.bat demo lan
 REM
 REM Each service gets its own window. Close that window to stop it, or run
 REM scripts\stop_all.bat to stop the two web services at once.
@@ -35,12 +38,14 @@ set "WEB_URL=http://127.0.0.1:%WEB_PORT%"
 
 set "OPEN_BROWSER=1"
 set "WITH_COLLECT=1"
+set "DEMO=0"
 
 :parse_args
 if "%~1"=="" goto :args_done
 if /I "%~1"=="--no-browser" set "OPEN_BROWSER=0"
 if /I "%~1"=="--no-collect" set "WITH_COLLECT=0"
 if /I "%~1"=="lan" set "HOST=0.0.0.0"
+if /I "%~1"=="demo" set "DEMO=1"
 shift
 goto :parse_args
 :args_done
@@ -53,6 +58,7 @@ if "%HOST%"=="0.0.0.0" (
 ) else (
     echo   Mode: local only
 )
+if "%DEMO%"=="1" echo   Demo: opens the 2026-08-09~10 rainstorm replay in presentation layout
 echo.
 
 REM ------------------------------------------------------------- preflight
@@ -119,9 +125,12 @@ if defined FRONTEND_UP (
 echo.
 
 REM ------------------------------------------------------------- browser
+set "OPEN_URL=%WEB_URL%"
+if "%DEMO%"=="1" set "OPEN_URL=%WEB_URL%/spatial?demo=1"
+
 if "%OPEN_BROWSER%"=="1" (
-    echo [OPEN]  %WEB_URL%
-    start "" "%WEB_URL%"
+    echo [OPEN]  %OPEN_URL%
+    start "" "%OPEN_URL%"
 ) else (
     echo [SKIP]  Browser not opened ^(--no-browser^)
 )
@@ -154,11 +163,17 @@ echo ============================================================
 echo   Frontend : %WEB_URL%
 echo   API docs : %API_URL%/docs
 echo   API base : %API_URL%/api
+if "%DEMO%"=="1" echo   Demo     : %OPEN_URL%
 echo.
 echo   Each service runs in its own window.
 echo     * close that window to stop that service
 echo     * scripts\stop_all.bat stops both web services at once
 echo     * scripts\status.bat shows what is listening
+if "%DEMO%"=="1" (
+    echo.
+    echo   Demo mode hides the sidebar and header; use the floating bar
+    echo   at the bottom to switch modules, or press Esc to leave it.
+)
 echo ============================================================
 if not defined YRD_NO_PAUSE pause >nul
 exit /b 0

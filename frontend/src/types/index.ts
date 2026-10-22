@@ -268,3 +268,46 @@ export interface RegionDetail {
   extremes: ExtremeEvent[]
   summary: RegionSummary
 }
+
+/* ---------------------------------------------------------------- 自动摘要素材 */
+
+export interface HighlightPoint {
+  adcode: string | null
+  name: string | null
+  value: number
+  time: string | null
+  max_hourly: number | null
+  level: string | null
+}
+
+export interface HighlightCurrent {
+  total_mm: number
+  wet_points: number
+  points_total: number
+  dry: boolean
+  peak: HighlightPoint | null
+  wettest: HighlightPoint | null
+}
+
+export interface HighlightPrevious {
+  total_mm: number
+  change_pct: number | null
+}
+
+export interface HighlightStrongestDay {
+  date: string
+  total_mm: number
+  peak: HighlightPoint | null
+}
+
+/** 总览页「读图要点」素材：结构化事实，句子由前端组织 */
+export interface OverviewHighlights {
+  latest_obs_time: string | null
+  hours: number
+  window_days: number
+  points_total: number
+  current: HighlightCurrent | null
+  previous: HighlightPrevious | null
+  strongest_day: HighlightStrongestDay | null
+  rain_days: number
+}

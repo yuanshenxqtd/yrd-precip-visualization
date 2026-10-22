@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 
 import {
+  fetchHighlights,
   fetchLevelDistribution,
   fetchRanking,
   fetchSummary,
@@ -12,12 +13,20 @@ import { describeError } from '@/api/client'
 import HourlyTrendChart from '@/components/charts/HourlyTrendChart.vue'
 import LevelDonutChart from '@/components/charts/LevelDonutChart.vue'
 import RainMap from '@/components/charts/RainMap.vue'
+import InsightPanel from '@/components/common/InsightPanel.vue'
 import StatCard from '@/components/common/StatCard.vue'
 import { ensureYrdMap } from '@/composables/useYrdMap'
 import { useAppStore } from '@/stores/app'
 import { useDetailStore } from '@/stores/detail'
 import { useFilterStore } from '@/stores/filter'
-import type { LevelCount, MapFrame, OverviewSummary, RankingItem, TrendPoint } from '@/types'
+import type {
+  LevelCount,
+  MapFrame,
+  OverviewHighlights,
+  OverviewSummary,
+  RankingItem,
+  TrendPoint,
+} from '@/types'
 import { formatNumber, shiftHours, shortTime } from '@/utils/format'
 
 const app = useAppStore()
@@ -29,6 +38,7 @@ const ranking = ref<RankingItem[]>([])
 const frames = ref<MapFrame[]>([])
 const series = ref<TrendPoint[]>([])
 const levels = ref<LevelCount[]>([])
+const highlights = ref<OverviewHighlights | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
 
@@ -112,6 +122,9 @@ async function load(): Promise<void> {
       fetchLevelDistribution().then((data) => {
         levels.value = data
       }),
+      fetchHighlights({ hours: 24, window_days: 30 }).then((data) => {
+        highlights.value = data
+      }),
     ]
 
     if (latest) {
@@ -159,6 +172,9 @@ onMounted(load)
         {{ loading ? '加载中…' : '刷新' }}
       </button>
     </div>
+
+    <!-- 读图要点：把「从图里读结论」搬到界面上 -->
+    <InsightPanel :data="highlights" @select="detail.open($event)" />
 
     <p v-if="error" class="notice notice--error">{{ error }}</p>
 

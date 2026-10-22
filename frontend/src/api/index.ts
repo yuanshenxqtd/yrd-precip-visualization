@@ -13,6 +13,7 @@ import type {
   MetaInfo,
   MonthlySeries,
   MultiSeries,
+  OverviewHighlights,
   OverviewSummary,
   QualityReport,
   RankingItem,
@@ -51,6 +52,9 @@ export const fetchRegionDetail = (adcode: string, params?: { hours?: number; day
 
 /* ---------------------------------------------------------------- 总览 */
 export const fetchSummary = () => get<OverviewSummary>('/overview/summary')
+/** 自动摘要素材（读图要点）：结构化事实，句子由前端组织 */
+export const fetchHighlights = (params?: { hours?: number; window_days?: number }) =>
+  get<OverviewHighlights>('/overview/highlights', params)
 export const fetchRanking = (params?: { limit?: number; hours?: number }) =>
   get<RankingItem[]>('/overview/ranking', params)
 

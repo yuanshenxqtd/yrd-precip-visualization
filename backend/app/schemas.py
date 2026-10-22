@@ -246,3 +246,59 @@ class RegionDetail(BaseModel):
     levels: list[LevelCount] = Field(description="该点位历史降水等级分布")
     extremes: list[ExtremeEvent] = Field(description="该点位历史极值榜")
     summary: RegionSummary = Field(description="汇总指标")
+
+
+# ---------------------------------------------------------------- 自动摘要素材
+
+class HighlightPoint(BaseModel):
+    """摘要里引用的单个点位。"""
+
+    adcode: str | None = Field(default=None, description="行政区划代码")
+    name: str | None = Field(default=None, description="点位名称")
+    value: float = Field(description="数值（mm 或 mm/h）")
+    time: str | None = Field(default=None, description="出现时刻")
+    max_hourly: float | None = Field(default=None, description="当日最大小时雨强")
+    level: str | None = Field(default=None, description="降水等级")
+
+
+class HighlightCurrent(BaseModel):
+    """当前窗口的态势。"""
+
+    total_mm: float = Field(description="窗口内全区累计（mm）")
+    wet_points: int = Field(description="窗口内下过雨的点位数")
+    points_total: int = Field(description="点位总数")
+    dry: bool = Field(description="窗口内全区是否无降水")
+    peak: HighlightPoint | None = Field(default=None, description="窗口内最强单小时")
+    wettest: HighlightPoint | None = Field(default=None, description="窗口内累计最多的点位")
+
+
+class HighlightPrevious(BaseModel):
+    """上一个同长度窗口，用于对比。"""
+
+    total_mm: float = Field(description="前一窗口全区累计（mm）")
+    change_pct: float | None = Field(
+        default=None, description="相对变化百分比；前值为 0 时为 null"
+    )
+
+
+class HighlightStrongestDay(BaseModel):
+    """近 N 天里最强的一天。"""
+
+    date: str = Field(description="日期")
+    total_mm: float = Field(description="当日全区合计（mm）")
+    peak: HighlightPoint | None = Field(default=None, description="当日最强点位")
+
+
+class OverviewHighlights(BaseModel):
+    """总览页「自动摘要」素材 —— 结构化事实，句子由前端组织。"""
+
+    latest_obs_time: str | None = Field(default=None, description="最新实况时刻")
+    hours: int = Field(description="当前窗口长度（小时）")
+    window_days: int = Field(description="历史窗口长度（天）")
+    points_total: int = Field(description="点位总数")
+    current: HighlightCurrent | None = Field(default=None, description="当前窗口态势")
+    previous: HighlightPrevious | None = Field(default=None, description="前一窗口对比")
+    strongest_day: HighlightStrongestDay | None = Field(
+        default=None, description="窗口内最强一天"
+    )
+    rain_days: int = Field(description="窗口内有降水的天数")

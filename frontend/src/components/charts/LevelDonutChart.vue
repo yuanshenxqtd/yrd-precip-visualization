@@ -1,5 +1,14 @@
 <script setup lang="ts">
-/** 降水等级分布环形图（GB/T 28592-2012）。 */
+/**
+ * 降水等级分布环形图（GB/T 28592-2012）。
+ *
+ * **单位必须由调用方指定，不要用默认的"天"。**
+ * 原因：`/api/trend/level-distribution` 返回的 count 是**日汇总行数**，
+ * 而一行 = 一个点位的一天。全区（56 个点位）时它是"点位·天"，
+ * 单点位时才是真正的"天"。
+ * 曾经这里硬编码成"天"，导致 3 年的数据被读成"三万多天"——
+ * 数据没错，是标注错了，而错的标注比缺标注更糟。
+ */
 import { computed } from 'vue'
 import type { EChartsOption } from 'echarts'
 
@@ -12,11 +21,27 @@ const props = withDefaults(
   defineProps<{
     items: LevelCount[]
     height?: string
+    /**
+     * 计数单位。
+     * · 多点位（全区）：'点位·天'
+     * · 单个点位：'天'
+     */
+    unit?: string
   }>(),
-  { height: '260px' },
+  { height: '260px', unit: '点位·天' },
 )
 
 const total = computed(() => props.items.reduce((sum, i) => sum + i.count, 0))
+
+/** 多点位合计时额外解释口径，避免"3 年却有 3 万多天"的误读 */
+const isMultiPoint = computed(() => props.unit.includes('点位'))
+
+const caption = computed(() => {
+  const value = total.value.toLocaleString('zh-CN')
+  return isMultiPoint.value
+    ? `共 ${value} ${props.unit}（1 个点位 1 天 = 1 ${props.unit}）`
+    : `共 ${value} ${props.unit}`
+})
 
 const option = computed<EChartsOption>(() => ({
   tooltip: {
@@ -25,7 +50,7 @@ const option = computed<EChartsOption>(() => ({
     formatter: (raw: unknown) => {
       const p = raw as { name?: string; value?: number; percent?: number }
       const value = (p.value ?? 0).toLocaleString('zh-CN')
-      return `${p.name ?? ''}<br/><b style="font-size:14px">${value}</b> 天　${p.percent ?? 0}%`
+      return `${p.name ?? ''}<br/><b style="font-size:14px">${value}</b> ${props.unit}　${p.percent ?? 0}%`
     },
   },
   legend: {
@@ -74,6 +99,7 @@ const option = computed<EChartsOption>(() => ({
   <div class="donut">
     <BaseChart v-if="total" :option="option" :height="height" />
     <p v-else class="chart-empty">暂无等级分布数据</p>
+    <p v-if="total" class="donut__caption">{{ caption }}</p>
   </div>
 </template>
 
@@ -88,5 +114,13 @@ const option = computed<EChartsOption>(() => ({
   min-height: 220px;
   font-size: 13px;
   color: var(--text-2);
+}
+
+.donut__caption {
+  margin-top: 2px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-2);
+  text-align: center;
 }
 </style>

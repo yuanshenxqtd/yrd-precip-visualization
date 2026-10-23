@@ -194,7 +194,7 @@ onBeforeUnmount(() => {
                   历史降水等级分布
                   <span class="block__hint">GB/T 28592-2012</span>
                 </div>
-                <LevelDonutChart :items="data.levels" height="220px" />
+                <LevelDonutChart :items="data.levels" height="220px" unit="天" />
               </section>
 
               <!-- 极值榜 -->

@@ -204,7 +204,7 @@ onMounted(() => {
         <span class="panel__subtitle">GB/T 28592-2012 · 24 小时口径</span>
       </header>
       <div class="panel__body">
-        <LevelDonutChart :items="levels" height="280px" />
+        <LevelDonutChart :items="levels" height="280px" :unit="adcode ? '天' : '点位·天'" />
       </div>
     </section>
   </div>

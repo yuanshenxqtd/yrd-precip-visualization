@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 
-import { fetchExtremes, fetchLevelDistribution } from '@/api'
+import { fetchExtremes } from '@/api'
 import { describeError } from '@/api/client'
-import LevelDonutChart from '@/components/charts/LevelDonutChart.vue'
-import type { ExtremeEvent, LevelCount } from '@/types'
+import type { ExtremeEvent } from '@/types'
 import { formatNumber } from '@/utils/format'
 
 /** 国标阈值：暴雨 ≥50、大暴雨 ≥100、特大暴雨 ≥250（24 小时口径） */
@@ -18,7 +17,6 @@ const THRESHOLDS = [
 const minMm = ref(50)
 const limit = ref(30)
 const events = ref<ExtremeEvent[]>([])
-const levels = ref<LevelCount[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
 
@@ -43,12 +41,11 @@ const distinctDates = computed(() => new Set(events.value.map((e) => e.obs_date)
 async function load(): Promise<void> {
   loading.value = true
   try {
-    const [eventData, levelData] = await Promise.all([
-      fetchExtremes({ min_mm: minMm.value > 0 ? minMm.value : undefined, limit: limit.value }),
-      fetchLevelDistribution(),
-    ])
+    const eventData = await fetchExtremes({
+      min_mm: minMm.value > 0 ? minMm.value : undefined,
+      limit: limit.value,
+    })
     events.value = eventData
-    levels.value = levelData
     error.value = null
   } catch (err) {
     error.value = describeError(err)
@@ -181,16 +178,6 @@ onMounted(load)
           建议重点回放 <strong>2026-08-10</strong> 过程：可到
           <RouterLink to="/spatial">空间分布</RouterLink> 模块用时间轴查看其演变。
         </p>
-      </div>
-    </section>
-
-    <section class="panel">
-      <header class="panel__header">
-        <div class="panel__title">全部日降水等级分布</div>
-        <span class="panel__subtitle">3 年全量 · GB/T 28592-2012</span>
-      </header>
-      <div class="panel__body">
-        <LevelDonutChart :items="levels" height="280px" />
       </div>
     </section>
   </div>

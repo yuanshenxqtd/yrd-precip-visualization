@@ -198,13 +198,15 @@ onMounted(() => {
       </section>
     </div>
 
-    <section class="panel">
+    <!-- 只在聚焦单个点位时展示：
+         全区时「点位·天」这种合计量不好解读，单个点位的「天」才有明确含义 -->
+    <section v-if="adcode" class="panel">
       <header class="panel__header">
-        <div class="panel__title">日降水量等级分布</div>
-        <span class="panel__subtitle">GB/T 28592-2012 · 24 小时口径</span>
+        <div class="panel__title">{{ filter.focusName ?? '该点位' }} 日降水量等级分布</div>
+        <span class="panel__subtitle">GB/T 28592-2012 · 24 小时口径 · 单位：天</span>
       </header>
       <div class="panel__body">
-        <LevelDonutChart :items="levels" height="280px" :unit="adcode ? '天' : '点位·天'" />
+        <LevelDonutChart :items="levels" height="280px" unit="天" />
       </div>
     </section>
   </div>

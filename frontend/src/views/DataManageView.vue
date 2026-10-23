@@ -110,7 +110,6 @@ onMounted(refreshAll)
         <h2 class="page__title">数据管理</h2>
         <p class="page__desc">
           数据源状态、采集审计日志、数据质量报告与 CSV 导出。
-          质量指标（缺测率、时间覆盖率、采集成功率）是论文「数据真实性与可用性」一节的直接证据。
         </p>
       </div>
       <div class="actions">
@@ -259,7 +258,7 @@ onMounted(refreshAll)
           CSV 带 UTF-8 BOM，可直接用 Excel 打开；字段包含行政区划代码、名称、省份、时间、降水量、等级。
         </p>
 
-        <!-- 自定义范围：写论文时经常需要"某个区间、某个点位"的数据 -->
+        <!-- 自定义范围：按区间与点位精确导出 -->
         <div class="range">
           <label class="range__item">
             <span>粒度</span>

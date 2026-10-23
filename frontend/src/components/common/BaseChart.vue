@@ -94,7 +94,7 @@ function syncLoading(): void {
   }
 }
 
-/** 导出当前图表为 PNG（2 倍分辨率 + 深色底，可直接用于论文插图） */
+/** 导出当前图表为 PNG（2 倍分辨率 + 深色底） */
 function downloadPng(): void {
   const instance = chart.value
   if (!instance) return
@@ -137,7 +137,7 @@ onBeforeUnmount(() => {
       v-if="exportable"
       class="chart-export"
       type="button"
-      title="导出 PNG（2 倍分辨率，可直接用于论文插图）"
+      title="导出 PNG（2 倍分辨率，深色背景）"
       @click.stop="downloadPng"
     >
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">

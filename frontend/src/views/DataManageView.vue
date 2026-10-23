@@ -5,15 +5,51 @@ import { exportCsvUrl, fetchCollectLogs, triggerCollect } from '@/api'
 import { describeError } from '@/api/client'
 import NavIcon from '@/components/common/NavIcon.vue'
 import { useAppStore } from '@/stores/app'
+import { useFilterStore } from '@/stores/filter'
 import type { CollectLog } from '@/types'
-import { formatNumber, shortDateTime } from '@/utils/format'
+import { formatNumber, shortDateTime, today } from '@/utils/format'
 
 const app = useAppStore()
+const filter = useFilterStore()
 const logs = ref<CollectLog[]>([])
 const loading = ref(false)
 const collecting = ref(false)
 const message = ref<string | null>(null)
 const error = ref<string | null>(null)
+
+/* ---------------------------------------------------------- 自定义范围导出 */
+
+const exportKind = ref<'daily' | 'hourly'>('daily')
+const exportStart = ref(shiftDays(today(), -29))
+const exportEnd = ref(today())
+const exportAdcode = ref<string>('')
+
+/** 把 YYYY-MM-DD 前移 n 天 */
+function shiftDays(date: string, days: number): string {
+  const [y, m, d] = date.split('-').map(Number)
+  const dt = new Date(y, (m ?? 1) - 1, d ?? 1)
+  dt.setDate(dt.getDate() + days)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`
+}
+
+/** 自定义范围导出链接：按粒度拼成后端接受的参数 */
+const customExportUrl = computed(() =>
+  exportCsvUrl({
+    kind: exportKind.value,
+    start: exportKind.value === 'hourly' ? `${exportStart.value}T00:00` : exportStart.value,
+    end: exportKind.value === 'hourly' ? `${exportEnd.value}T23:00` : exportEnd.value,
+    adcode: exportAdcode.value || undefined,
+  }),
+)
+
+const customRangeDays = computed(() => {
+  const [y1, m1, d1] = exportStart.value.split('-').map(Number)
+  const [y2, m2, d2] = exportEnd.value.split('-').map(Number)
+  const a = new Date(y1, (m1 ?? 1) - 1, d1 ?? 1).getTime()
+  const b = new Date(y2, (m2 ?? 1) - 1, d2 ?? 1).getTime()
+  return Math.round((b - a) / 86_400_000) + 1
+})
 
 const quality = computed(() => app.quality)
 
@@ -222,6 +258,38 @@ onMounted(refreshAll)
         <p class="export-hint text-muted">
           CSV 带 UTF-8 BOM，可直接用 Excel 打开；字段包含行政区划代码、名称、省份、时间、降水量、等级。
         </p>
+
+        <!-- 自定义范围：写论文时经常需要"某个区间、某个点位"的数据 -->
+        <div class="range">
+          <label class="range__item">
+            <span>粒度</span>
+            <select v-model="exportKind">
+              <option value="daily">日数据</option>
+              <option value="hourly">小时数据</option>
+            </select>
+          </label>
+          <label class="range__item">
+            <span>从</span>
+            <input v-model="exportStart" type="date" />
+          </label>
+          <label class="range__item">
+            <span>到</span>
+            <input v-model="exportEnd" type="date" />
+          </label>
+          <label class="range__item">
+            <span>点位</span>
+            <select v-model="exportAdcode">
+              <option value="">全部点位</option>
+              <option v-for="r in filter.monitored" :key="r.adcode" :value="r.adcode">
+                {{ r.name }}
+              </option>
+            </select>
+          </label>
+          <a class="btn" :href="customExportUrl" download>
+            <NavIcon name="download" /> 导出所选范围
+          </a>
+          <span class="range__hint text-muted">共 {{ customRangeDays }} 天</span>
+        </div>
       </div>
     </section>
   </div>
@@ -426,5 +494,46 @@ onMounted(refreshAll)
 .export-hint {
   margin-top: var(--gap-sm);
   font-size: 12px;
+}
+/* 自定义范围导出 */
+.range {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--gap-sm);
+  flex-wrap: wrap;
+  margin-top: var(--gap);
+  padding-top: var(--gap);
+  border-top: 1px dashed rgba(120, 170, 255, 0.14);
+}
+
+.range__item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+
+.range__item select,
+.range__item input {
+  padding: 5px 9px;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--text-0);
+  background: rgba(16, 29, 56, 0.9);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  outline: none;
+  cursor: pointer;
+}
+
+.range__item select:hover,
+.range__item input:hover {
+  border-color: var(--panel-border-hover);
+}
+
+.range__hint {
+  font-size: 11.5px;
+  padding-bottom: 6px;
 }
 </style>

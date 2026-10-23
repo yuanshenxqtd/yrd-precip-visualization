@@ -18,7 +18,7 @@
  *     因此这里用相对强度色阶而**不套用等级名称**
  */
 import { computed, onMounted, ref, watch } from 'vue'
-import * as echarts from 'echarts'
+import * as echarts from 'echarts/core'
 import type { EChartsOption } from 'echarts'
 
 import { fetchField } from '@/api'

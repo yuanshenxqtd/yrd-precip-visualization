@@ -3,7 +3,6 @@ import { computed, onMounted, ref, watch } from 'vue'
 
 import {
   fetchHighlights,
-  fetchLevelDistribution,
   fetchRanking,
   fetchSummary,
   fetchTimeseries,
@@ -11,7 +10,6 @@ import {
 } from '@/api'
 import { describeError } from '@/api/client'
 import HourlyTrendChart from '@/components/charts/HourlyTrendChart.vue'
-import LevelDonutChart from '@/components/charts/LevelDonutChart.vue'
 import RainMap from '@/components/charts/RainMap.vue'
 import InsightPanel from '@/components/common/InsightPanel.vue'
 import StatCard from '@/components/common/StatCard.vue'
@@ -20,7 +18,6 @@ import { useAppStore } from '@/stores/app'
 import { useDetailStore } from '@/stores/detail'
 import { useFilterStore } from '@/stores/filter'
 import type {
-  LevelCount,
   MapFrame,
   OverviewHighlights,
   OverviewSummary,
@@ -37,7 +34,6 @@ const summary = ref<OverviewSummary | null>(null)
 const ranking = ref<RankingItem[]>([])
 const frames = ref<MapFrame[]>([])
 const series = ref<TrendPoint[]>([])
-const levels = ref<LevelCount[]>([])
 const highlights = ref<OverviewHighlights | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -119,9 +115,6 @@ async function load(): Promise<void> {
         ranking.value = data
       }),
       loadSeries(),
-      fetchLevelDistribution().then((data) => {
-        levels.value = data
-      }),
       fetchHighlights({ hours: 24, window_days: 30 }).then((data) => {
         highlights.value = data
       }),
@@ -296,32 +289,20 @@ onMounted(load)
       </section>
     </div>
 
-    <!-- 趋势 + 等级 -->
-    <div class="grid-2">
-      <section class="panel">
-        <header class="panel__header">
-          <div class="panel__title">
-            近 24 小时{{ filter.hasFocus ? filter.focusName : '全区' }}降水
-          </div>
-          <span class="panel__subtitle">
-            {{ filter.hasFocus ? '该点位逐小时降水 · mm' : '逐小时合计 · mm' }}
-          </span>
-        </header>
-        <div class="panel__body">
-          <HourlyTrendChart :points="series" height="248px" />
+    <!-- 近 24 小时趋势（原与等级分布环形图并排，环形图已移除，故独占整行） -->
+    <section class="panel">
+      <header class="panel__header">
+        <div class="panel__title">
+          近 24 小时{{ filter.hasFocus ? filter.focusName : '全区' }}降水
         </div>
-      </section>
-
-      <section class="panel">
-        <header class="panel__header">
-          <div class="panel__title">日降水量等级分布</div>
-          <span class="panel__subtitle">3 年全量 · GB/T 28592-2012</span>
-        </header>
-        <div class="panel__body">
-          <LevelDonutChart :items="levels" height="248px" />
-        </div>
-      </section>
-    </div>
+        <span class="panel__subtitle">
+          {{ filter.hasFocus ? '该点位逐小时降水 · mm' : '逐小时合计 · mm' }}
+        </span>
+      </header>
+      <div class="panel__body">
+        <HourlyTrendChart :points="series" height="248px" />
+      </div>
+    </section>
 
     <!-- 数据源状态 -->
     <section class="panel">

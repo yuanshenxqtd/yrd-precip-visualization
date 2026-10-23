@@ -54,6 +54,12 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: '数据管理', icon: 'database', module: 'data' },
   },
   {
+    path: '/about',
+    name: 'about',
+    component: () => import('@/views/AboutView.vue'),
+    meta: { title: '关于本系统', icon: 'info', module: 'about' },
+  },
+  {
     path: '/:pathMatch(.*)*',
     redirect: '/overview',
   },

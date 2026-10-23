@@ -7,6 +7,7 @@ import type {
   CollectResult,
   DailySeries,
   ExtremeEvent,
+  FieldGrid,
   GeoJSONFeatureCollection,
   LevelCount,
   MapFrame,
@@ -66,6 +67,9 @@ export const fetchTimeseries = (params?: { adcode?: string; hours?: number }) =>
 /* ------------------------------------------------------------ 空间分布 */
 export const fetchSpatialMap = (params?: { time?: string }) =>
   get<{ time: string | null; points: RealtimeLatest['points'] }>('/spatial/map', params)
+export const fetchField = (params?: { time?: string; step?: number; power?: number }) =>
+  get<FieldGrid>('/spatial/field', params)
+
 export const fetchTimespan = (params: { start: string; end: string; max_frames?: number }) =>
   get<MapFrame[]>('/spatial/timespan', params)
 

@@ -3,12 +3,13 @@ import { computed, onMounted, ref } from 'vue'
 
 import { fetchRealtimeLatest, fetchTimespan } from '@/api'
 import { describeError } from '@/api/client'
+import FieldMap from '@/components/charts/FieldMap.vue'
 import RainMap from '@/components/charts/RainMap.vue'
 import TimeScrubber from '@/components/common/TimeScrubber.vue'
 import { useAppStore } from '@/stores/app'
 import { useDetailStore } from '@/stores/detail'
 import { useFilterStore } from '@/stores/filter'
-import type { MapFrame } from '@/types'
+import type { MapFrame, MapPoint } from '@/types'
 import { formatNumber, shiftHours, shortTime } from '@/utils/format'
 
 const app = useAppStore()
@@ -86,6 +87,27 @@ const mapData = computed(() =>
     value: Math.round((v ?? 0) * 10) / 10,
   })),
 )
+
+/**
+ * 连续场模式下的站点覆盖层：用全局行政区划的经纬度补全每个站点的位置。
+ * 保留站点圆点，是为了让使用者看得见「插值是从哪些实况点推出来的」——
+ * 否则一片渐变会让人误以为是观测到的面状数据。
+ */
+const fieldMode = ref<'field' | 'region'>('field')
+
+const fieldPoints = computed<MapPoint[]>(() => {
+  const values = currentFrame.value?.values ?? {}
+  return filter.monitored.map((region) => ({
+    adcode: region.adcode,
+    name: region.name,
+    province: region.province,
+    lon: region.lon,
+    lat: region.lat,
+    value: values[region.adcode] ?? 0,
+    level: null,
+    color: null,
+  }))
+})
 
 const frameRanking = computed(() =>
   Object.entries(currentFrame.value?.values ?? {})
@@ -205,10 +227,37 @@ onMounted(load)
       <section class="panel">
         <header class="panel__header">
           <div class="panel__title">长三角降水场</div>
-          <span class="panel__subtitle">{{ frameLabel }}</span>
+          <div class="controls">
+            <div class="seg">
+              <button
+                class="seg__btn"
+                :class="{ 'seg__btn--active': fieldMode === 'field' }"
+                title="连续插值场：看雨带走向与区域内强中心"
+                @click="fieldMode = 'field'"
+              >
+                连续场
+              </button>
+              <button
+                class="seg__btn"
+                :class="{ 'seg__btn--active': fieldMode === 'region' }"
+                title="按行政区划整体着色：看哪个市下了多少"
+                @click="fieldMode = 'region'"
+              >
+                区域着色
+              </button>
+            </div>
+            <span class="panel__subtitle">{{ frameLabel }}</span>
+          </div>
         </header>
         <div class="panel__body">
-          <RainMap :data="mapData" height="470px" @select="detail.open($event)" />
+          <FieldMap
+            v-if="fieldMode === 'field'"
+            :time="currentFrame?.time ?? null"
+            :points="fieldPoints"
+            height="470px"
+            @select="detail.open($event)"
+          />
+          <RainMap v-else :data="mapData" height="470px" @select="detail.open($event)" />
           <div class="player">
             <TimeScrubber
               v-model="index"
@@ -448,5 +497,32 @@ onMounted(load)
   font-size: 12.5px;
   color: var(--text-2);
   text-align: center;
+}
+/* 连续场 / 区域着色 切换 */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  flex-wrap: wrap;
+}
+
+.seg {
+  display: inline-flex;
+  padding: 2px;
+  background: rgba(120, 170, 255, 0.07);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+}
+
+.seg__btn {
+  padding: 3px 10px;
+  font-size: 12px;
+  color: var(--text-2);
+  border-radius: 4px;
+}
+
+.seg__btn--active {
+  color: var(--text-0);
+  background: var(--accent-dim);
 }
 </style>

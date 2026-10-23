@@ -302,3 +302,21 @@ class OverviewHighlights(BaseModel):
         default=None, description="窗口内最强一天"
     )
     rain_days: int = Field(description="窗口内有降水的天数")
+
+
+class FieldGrid(BaseModel):
+    """IDW 插值得到的连续降水场（一维 row-major 网格）。"""
+
+    obs_time: str = Field(description="时刻；空串表示无数据")
+    lon_min: float = Field(description="网格西边界经度")
+    lon_max: float = Field(description="网格东边界经度")
+    lat_min: float = Field(description="网格南边界纬度")
+    lat_max: float = Field(description="网格北边界纬度")
+    step: float = Field(description="网格步长（度）")
+    cols: int = Field(description="列数（经度方向）")
+    rows: int = Field(description="行数（纬度方向）")
+    max_value: float = Field(description="场最大值（mm/h）")
+    point_count: int = Field(description="参与插值的点位数")
+    values: list[float] = Field(
+        description="网格值，按行优先排列，index = row * cols + col；lat = lat_min + row * step"
+    )

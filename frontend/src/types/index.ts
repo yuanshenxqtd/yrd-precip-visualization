@@ -311,3 +311,21 @@ export interface OverviewHighlights {
   strongest_day: HighlightStrongestDay | null
   rain_days: number
 }
+
+/* ---------------------------------------------------------------- 空间插值降水场 */
+
+/** IDW 插值得到的连续降水场（一维 row-major 网格） */
+export interface FieldGrid {
+  obs_time: string
+  lon_min: number
+  lon_max: number
+  lat_min: number
+  lat_max: number
+  step: number
+  cols: number
+  rows: number
+  max_value: number
+  point_count: number
+  /** index = row * cols + col；lon = lon_min + col*step，lat = lat_min + row*step */
+  values: number[]
+}

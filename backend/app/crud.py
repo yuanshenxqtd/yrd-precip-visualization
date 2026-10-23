@@ -723,6 +723,119 @@ def spatial_map(session: Session, obs_time: str | None = None) -> dict[str, Any]
     return {"time": t, "points": _map_points(session, t)}
 
 
+def spatial_field(
+    session: Session,
+    *,
+    time: str | None = None,
+    step: float = 0.12,
+    power: float = 2.0,
+) -> dict[str, Any]:
+    """用反距离加权（IDW）把 56 个点位插值成规则网格上的连续降水场。
+
+    取最近 `k=12` 个点参与加权（全量 56 个会让远处点贡献过多噪声），
+    权重 w = 1 / d^power，落点重合时直接取该点值。
+
+    返回 **一维 row-major 网格**（index = row * cols + col），
+    由前端按下面的字段还原经纬度，避免 JSON 里塞几十万个坐标。
+    """
+    import numpy as np
+
+    t = time or latest_observed_time(session)
+    if t is None:
+        return {
+            "obs_time": "",
+            "lon_min": 0.0,
+            "lon_max": 0.0,
+            "lat_min": 0.0,
+            "lat_max": 0.0,
+            "step": step,
+            "cols": 0,
+            "rows": 0,
+            "max_value": 0.0,
+            "point_count": 0,
+            "values": [],
+        }
+
+    rows = session.execute(
+        select(GridPoint.lon, GridPoint.lat, PrecipHourly.precip_mm)
+        .join(GridPoint, GridPoint.id == PrecipHourly.point_id)
+        .where(
+            PrecipHourly.is_forecast == 0,
+            PrecipHourly.obs_time == t,
+            PrecipHourly.precip_mm.is_not(None),
+        )
+    ).all()
+
+    if not rows:
+        return {
+            "obs_time": t,
+            "lon_min": 0.0,
+            "lon_max": 0.0,
+            "lat_min": 0.0,
+            "lat_max": 0.0,
+            "step": step,
+            "cols": 0,
+            "rows": 0,
+            "max_value": 0.0,
+            "point_count": 0,
+            "values": [],
+        }
+
+    src_lon = np.array([float(r[0]) for r in rows], dtype=np.float64)
+    src_lat = np.array([float(r[1]) for r in rows], dtype=np.float64)
+    src_val = np.array([float(r[2] or 0.0) for r in rows], dtype=np.float64)
+
+    pad = 0.15
+    lon_min = float(src_lon.min()) - pad
+    lon_max = float(src_lon.max()) + pad
+    lat_min = float(src_lat.min()) - pad
+    lat_max = float(src_lat.max()) + pad
+
+    cols = int(round((lon_max - lon_min) / step)) + 1
+    rows_n = int(round((lat_max - lat_min) / step)) + 1
+    # 上限保护：避免有人传极小 step 把服务打爆
+    cols = min(cols, 400)
+    rows_n = min(rows_n, 400)
+    lon_max = lon_min + (cols - 1) * step
+    lat_max = lat_min + (rows_n - 1) * step
+
+    gx = np.linspace(lon_min, lon_max, cols)
+    gy = np.linspace(lat_min, lat_max, rows_n)
+    gxx, gyy = np.meshgrid(gx, gy)
+
+    # 距离矩阵：rows_n × cols × n_points
+    d2 = (gxx[..., None] - src_lon) ** 2 + (gyy[..., None] - src_lat) ** 2
+    np.maximum(d2, 1e-10, out=d2)
+
+    k = min(12, len(src_val))
+    if k < len(src_val):
+        # 只保留最近的 k 个点参与加权
+        nearest = np.argpartition(d2, k - 1, axis=-1)[..., :k]
+        d2k = np.take_along_axis(d2, nearest, axis=-1)
+        valk = src_val[nearest]
+    else:
+        d2k = d2
+        valk = np.broadcast_to(src_val, d2.shape)
+
+    w = 1.0 / np.power(d2k, power / 2.0)
+    field = (w * valk).sum(axis=-1) / w.sum(axis=-1)
+    field = np.clip(field, 0.0, None)
+
+    return {
+        "obs_time": t,
+        "lon_min": round(lon_min, 4),
+        "lon_max": round(lon_max, 4),
+        "lat_min": round(lat_min, 4),
+        "lat_max": round(lat_max, 4),
+        "step": step,
+        "cols": cols,
+        "rows": rows_n,
+        "max_value": round(float(field.max()), 2),
+        "point_count": int(len(src_val)),
+        "values": [round(float(v), 2) for v in field.ravel()],
+    }
+
+
 def spatial_timespan(
     session: Session, *, start: str, end: str, max_frames: int = 48
 ) -> list[dict[str, Any]]:

@@ -51,9 +51,17 @@ COPY backend/ ./backend/
 COPY collector/ ./collector/
 
 # 静态边界数据（5 个 JSON，已入库）。
-# 命名数据卷首次创建时，Docker 会把镜像里 /app/data 的内容播种进卷，
-# 所以挂载卷之后 geojson 不会丢。
 COPY data/geojson/ ./data/geojson/
+
+# 种子数据库（约 15 MB，已入库）：
+#   · 60 个行政区划 + 56 个点位
+#   · 全量 3 年日数据（支撑趋势 / 距平 / 等级分布 / 极值榜）
+#   · 最近 30 天小时数据 + 2026-08-09~10 大暴雨过程（支撑实时监测与回放）
+#
+# 命名为 weather.db 是刻意的：命名数据卷首次创建时 Docker 会把镜像里
+# /app/data 的内容播种进卷，因此 `docker compose up` 之后**开箱就有数据**，
+# 不需要任何手动导入步骤。要换成完整历史库，见 deploy/README.md。
+COPY data/seed.db ./data/weather.db
 
 RUN mkdir -p data/snapshots .tmp && chown -R appuser:appuser /app
 

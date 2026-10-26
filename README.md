@@ -92,6 +92,19 @@ $env:YRD_NO_PAUSE = '1'; & cmd /c "scripts\stop_all.bat"
 
 ## 快速开始
 
+### 最省事：Docker 一条命令（任意系统）
+
+```bash
+git clone https://github.com/yuanshenxqtd/yrd-precip-visualization.git
+cd yrd-precip-visualization
+docker compose up -d
+```
+
+镜像**自带一份种子数据库**（全量 3 年日数据 + 最近 30 天小时数据 + 2026-08-09~10 大暴雨过程），
+起来就有数据，**不需要任何导入步骤**。浏览器打开 `http://localhost/` 即可。
+
+想换成完整历史库、或绑定域名上 HTTPS，见 [deploy/README.md](deploy/README.md)。
+
 ### 日常使用：一键启动（推荐）
 
 **双击 `scripts\start.bat`** 即可 —— 它会按顺序完成：

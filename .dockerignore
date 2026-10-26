@@ -1,0 +1,33 @@
+# 构建上下文排除清单：只影响"发给 Docker daemon 的文件"，不影响运行结果。
+# 目的：缩小上下文体积、避免把本机环境或大文件带进镜像。
+
+# ---- 版本库与本地环境 ----
+.git
+.github
+.gitignore
+.venv
+.tmp
+*.pyc
+__pycache__/
+**/__pycache__/
+
+# ---- 前端依赖与构建产物（web-build 阶段自己装、自己构建）----
+frontend/node_modules
+frontend/dist
+**/node_modules
+
+# ---- 数据 ----
+# 只保留 data/geojson 进镜像；数据库与快照属本机运行数据，不参与构建。
+data/weather.db
+data/weather.db-shm
+data/weather.db-wal
+data/snapshots
+
+# ---- 文档与运维脚本（镜像内不需要）----
+docs
+scripts
+deploy
+*.md
+
+# 注意：**不要**在这里排除 Dockerfile / Caddyfile / docker-compose.yml。
+# web 阶段需要 COPY Caddyfile，排除它会导致构建直接失败（本项目曾踩过）。

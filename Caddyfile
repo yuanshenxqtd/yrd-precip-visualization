@@ -1,0 +1,47 @@
+# ==============================================================================
+# 长三角降水监测系统 —— Caddy 配置
+#
+# 为什么要同源：前端构建时 VITE_API_BASE=/api（见 frontend/.env.production），
+# 由 Caddy 把 /api/* 反代到后端。这样前端与接口同源，
+# 既不需要配 CORS，也不需要在构建时写死后端地址。
+#
+# 用法：
+#   · 用 IP 或本地访问      什么都不用设，默认监听 80
+#   · 绑定域名 + 自动 HTTPS  设置环境变量 SITE_ADDRESS=example.com
+#                           （域名需已解析到本机；Caddy 会自动申请证书）
+# ==============================================================================
+
+{$SITE_ADDRESS::80} {
+	root * /srv
+
+	# 压缩（zstd 优先，浏览器不支持时回落 gzip）
+	encode zstd gzip
+
+	# ---- 后端接口 ----
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+
+	# ---- 带内容哈希的静态资源：可安全长缓存 ----
+	handle /assets/* {
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	# ---- 其余请求：先找文件，找不到就回退到 index.html（SPA 路由）----
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		-Server
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

@@ -1,0 +1,95 @@
+# ==============================================================================
+# 长三角降水监测系统 —— 单机 Docker Compose 部署
+#
+# 三个服务：
+#   api        后端（FastAPI），只在内网暴露 8000
+#   collector  采集器（与 api 同一镜像，只换启动命令），每 30 分钟采一次
+#   web        Caddy：托管前端静态产物 + 反代 /api，对外暴露 80/443
+#
+# 关键点：
+#   · appdata 卷同时挂给 api 与 collector。SQLite 已开 WAL，两个进程在
+#     同一宿主机的同一文件系统上是安全的（不要把这个卷跨机器共享）。
+#   · 首次启动需要把已有的 weather.db 放进去，否则是空库。见 deploy/README.md。
+#   · 采集器依赖 api 健康后才启动，避免并发初始化数据库。
+#
+# 启动：docker compose up -d --build
+# 日志：docker compose logs -f
+# ==============================================================================
+
+name: yrd-precip
+
+services:
+  # ---------------------------------------------------------------- 后端 API
+  api:
+    build:
+      context: .
+      target: backend
+    image: yrd-precip-backend:latest
+    restart: unless-stopped
+    environment:
+      YRD_API_HOST: 0.0.0.0
+      YRD_API_PORT: "8000"
+      YRD_DATABASE_URL: sqlite:////app/data/weather.db
+      TZ: Asia/Shanghai
+    volumes:
+      - appdata:/app/data
+    expose:
+      - "8000"
+    healthcheck:
+      # 镜像里没有 curl，直接用 Python 探活
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5).status == 200 else 1)",
+        ]
+      interval: 30s
+      timeout: 6s
+      retries: 3
+      start_period: 25s
+
+  # ---------------------------------------------------------------- 采集器
+  collector:
+    build:
+      context: .
+      target: backend
+    image: yrd-precip-backend:latest
+    restart: unless-stopped
+    # 同一镜像，换成采集器入口；它自带 .tmp/scheduler.pid 单实例锁，
+    # 即使误起了第二个实例也不会重复写库。
+    command: ["python", "-m", "collector.scheduler"]
+    environment:
+      YRD_DATABASE_URL: sqlite:////app/data/weather.db
+      TZ: Asia/Shanghai
+    volumes:
+      - appdata:/app/data
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------- Web
+  web:
+    build:
+      context: .
+      target: web
+    image: yrd-precip-web:latest
+    restart: unless-stopped
+    environment:
+      # 留空则监听 80；填域名（如 example.com）则自动申请 HTTPS 证书
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Caddy 的证书与配置必须持久化，否则每次重启都要重新申请证书
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  appdata:
+  caddy_data:
+  caddy_config:

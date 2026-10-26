@@ -87,6 +87,13 @@ def get_meta(session: Session) -> dict[str, Any]:
     daily_rows = session.scalar(select(func.count()).select_from(PrecipDaily)) or 0
     regions_total = session.scalar(select(func.count()).select_from(Region)) or 0
     points_total = session.scalar(select(func.count()).select_from(GridPoint)) or 0
+    # 「区划」与「监测点位」是两个概念，数量并不相等：
+    # 沪苏浙皖四个省级条目存在于区划表中（用于拼接地图底图边界），
+    # 但它们本身没有采集点。这里把两者分开暴露，避免使用者把 60 当成点位数。
+    regions_monitored = (
+        session.scalar(select(func.count()).select_from(Region).where(Region.is_monitored.is_(True)))
+        or 0
+    )
 
     hourly_start, hourly_end = session.execute(
         select(func.min(PrecipHourly.obs_time), func.max(PrecipHourly.obs_time))
@@ -115,6 +122,8 @@ def get_meta(session: Session) -> dict[str, Any]:
         "data_source": OPENMETEO_SOURCE_NAME,
         "points_total": points_total,
         "regions_total": regions_total,
+        "regions_monitored": regions_monitored,
+        "regions_unmonitored": max(regions_total - regions_monitored, 0),
         "hourly_rows": hourly_rows,
         "daily_rows": daily_rows,
         "hourly_start": hourly_start,

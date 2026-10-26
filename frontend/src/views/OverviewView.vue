@@ -313,7 +313,21 @@ onMounted(load)
       <div class="panel__body">
         <dl class="kv">
           <div><dt>数据源</dt><dd>{{ app.meta?.data_source ?? '—' }}（ECMWF ERA5 / ERA5-Land）</dd></div>
-          <div><dt>采集点 / 行政区划</dt><dd class="text-mono">{{ app.meta?.points_total ?? '—' }} / {{ app.meta?.regions_total ?? '—' }}</dd></div>
+          <div>
+            <dt>采集点</dt>
+            <dd class="text-mono">
+              {{ app.meta?.points_total ?? '—' }} 个 · 与
+              {{ app.meta?.regions_monitored ?? '—' }} 个监测区划一一对应
+            </dd>
+          </div>
+          <div>
+            <dt>底图区划</dt>
+            <dd class="text-mono">
+              {{ app.meta?.regions_total ?? '—' }} 个（含
+              {{ app.meta?.regions_unmonitored ?? '—' }}
+              个省级条目，仅用于地图边界，无采集点）
+            </dd>
+          </div>
           <div><dt>小时记录</dt><dd class="text-mono">{{ app.meta ? formatNumber(app.meta.hourly_rows) : '—' }}</dd></div>
           <div><dt>日汇总记录</dt><dd class="text-mono">{{ app.meta ? formatNumber(app.meta.daily_rows) : '—' }}</dd></div>
           <div><dt>实况数据范围</dt><dd class="text-mono">{{ shortTime(app.meta?.observed_start) }} ~ {{ shortTime(app.meta?.observed_end) }}</dd></div>

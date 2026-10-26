@@ -14,7 +14,11 @@ class MetaOut(BaseModel):
 
     data_source: str = Field(description="数据源标识")
     points_total: int = Field(description="采集点总数")
-    regions_total: int = Field(description="行政区划总数")
+    regions_total: int = Field(description="底图行政区划总数（含省级条目）")
+    regions_monitored: int = Field(description="参与统计的区划数（与采集点一一对应）")
+    regions_unmonitored: int = Field(
+        description="仅用于地图边界的区划数（沪苏浙皖四个省级条目，无采集点）"
+    )
     hourly_rows: int = Field(description="逐小时降水总行数")
     daily_rows: int = Field(description="日汇总总行数")
     hourly_start: str | None = Field(default=None, description="小时数据起始时刻")

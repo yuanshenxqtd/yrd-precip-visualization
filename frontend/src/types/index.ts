@@ -3,7 +3,12 @@
 export interface MetaInfo {
   data_source: string
   points_total: number
+  /** 底图行政区划总数（含省级条目） */
   regions_total: number
+  /** 参与统计的区划数（与采集点一一对应） */
+  regions_monitored: number
+  /** 仅用于地图边界的省级条目数（无采集点） */
+  regions_unmonitored: number
   hourly_rows: number
   daily_rows: number
   hourly_start: string | null

@@ -72,3 +72,6 @@ pip-unpack-*/
 # ============================================================
 *.doc
 *.docx
+data/weather-clean.db
+data/weather-clean.db-shm
+data/weather-clean.db-wal

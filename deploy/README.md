@@ -35,28 +35,58 @@ Caddy（web，对外 80/443）
 
 镜像**不含数据库**（`data/weather.db` 在 `.gitignore` 里）。
 空库启动会没有数据，重新回填要跑很久还消耗 API 额度 ——
-**正确做法是把本机已有的 95 MB 数据库直接放进去。**
+**正确做法是把本机已有的数据库放进去。**
+
+> ⚠️ 下面这套步骤是**实测通过**的。三个坑必须同时避开，
+> 否则会出现「文件明明在卷里、查询却是 0 行」或「容器启动即崩」：
+>
+> 1. **不要用 `docker compose cp`** —— 实测对已停止的容器不生效，文件根本没进去。
+> 2. **必须先清掉卷里残留的 `weather.db-wal` / `-shm`** —— 旧 WAL 与新库不匹配时
+>    SQLite 会把数据库**重置为空**。这是本项目踩过最隐蔽的坑。
+> 3. **必须把文件属主改成 `10001:10001`** —— 容器以非 root 用户运行，
+>    root 所有的文件会让启动时报 `attempt to write a readonly database`
+>    （应用启动时要执行 `PRAGMA journal_mode=WAL`，需要写权限）。
 
 ```bash
-# ① 先只起后端，让 Docker 创建并播种数据卷（geojson 会被复制进卷）
+# ① 本机导出干净副本（自包含、无 WAL 依赖），并核对行数
+python deploy/vacuum_db.py
+#    target : data/weather-clean.db  (89.1 MB)
+#      precip_hourly    src=  561792  dst=  561792  OK
+#      precip_daily     src=   64008  dst=   64008  OK
+#      region           src=      60  dst=      60  OK
+
+# ② 先起一次后端，让 Docker 创建数据卷并播种 geojson
 docker compose up -d api
 
-# ② 把本机数据库拷进容器
-#    注意：本机服务先停掉，或同时拷贝 -wal / -shm，避免拿到半写状态
-docker compose cp data/weather.db api:/app/data/weather.db
+# ③ 停后端，清空卷里的数据库文件（保留 geojson）
+docker compose stop api
+docker run --rm -v yrd-precip_appdata:/v alpine:3.20 \
+  sh -c "rm -f /v/weather.db /v/weather.db-wal /v/weather.db-shm"
 
-# ③ 重启后端让它读到数据，再起全部服务
-docker compose restart api
+# ④ 把干净副本写进卷，并修正属主（容器内以 uid 10001 运行）
+docker run --rm \
+  -v yrd-precip_appdata:/v \
+  -v "$PWD/data:/src:ro" \
+  alpine:3.20 \
+  sh -c "cp /src/weather-clean.db /v/weather.db && chown 10001:10001 /v/weather.db && chmod 644 /v/weather.db"
+
+# ⑤ 起全部服务
 docker compose up -d
 ```
 
 验证：
 
 ```bash
-curl -s http://localhost/api/health
-curl -s http://localhost/api/meta | head -c 300
-docker compose ps          # 三个服务都应为 running / healthy
+curl -s http://localhost/api/health          # {"status":"ok",...}
+curl -s http://localhost/api/meta            # points_total / hourly_rows 应非空
+docker compose exec -T api python -c "import sqlite3;c=sqlite3.connect('/app/data/weather.db');print(c.execute('select count(*) from precip_hourly').fetchone()[0])"
+docker compose ps                            # 三个服务都应为 running / healthy
 ```
+
+浏览器打开 `http://<服务器IP>/` 即可。
+
+> Windows + Docker Desktop 时，第 ④ 步的 `$PWD` 换成绝对路径并用正斜杠，
+> 例如 `-v "D:/visualization/data:/src:ro"`。已在本机实测通过。
 
 浏览器打开 `http://<服务器IP>/` 即可。
 

@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 
-import { fetchExtremes } from '@/api'
+import { fetchActiveAlerts, fetchExtremes } from '@/api'
 import { describeError } from '@/api/client'
-import type { ExtremeEvent } from '@/types'
+import type { ActiveAlerts, ExtremeEvent } from '@/types'
 import { formatNumber } from '@/utils/format'
 
 /** 国标阈值：暴雨 ≥50、大暴雨 ≥100、特大暴雨 ≥250（24 小时口径） */
@@ -17,6 +17,8 @@ const THRESHOLDS = [
 const minMm = ref(50)
 const limit = ref(30)
 const events = ref<ExtremeEvent[]>([])
+/** 当前达标预警（本地判定，实时算） */
+const active = ref<ActiveAlerts | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
 
@@ -41,11 +43,12 @@ const distinctDates = computed(() => new Set(events.value.map((e) => e.obs_date)
 async function load(): Promise<void> {
   loading.value = true
   try {
-    const eventData = await fetchExtremes({
-      min_mm: minMm.value > 0 ? minMm.value : undefined,
-      limit: limit.value,
-    })
+    const [eventData, activeData] = await Promise.all([
+      fetchExtremes({ min_mm: minMm.value > 0 ? minMm.value : undefined, limit: limit.value }),
+      fetchActiveAlerts(),
+    ])
     events.value = eventData
+    active.value = activeData
     error.value = null
   } catch (err) {
     error.value = describeError(err)
@@ -75,6 +78,53 @@ onMounted(load)
 
     <p v-if="error" class="notice notice--error">{{ error }}</p>
 
+    <!-- 当前预警状态（本地达标判定，实时计算） -->
+    <section class="panel">
+      <header class="panel__header">
+        <div class="panel__title">当前预警状态</div>
+        <span class="panel__subtitle">
+          实况 {{ active?.latest_obs_time ? active.latest_obs_time.replace('T', ' ') : '—' }} ·
+          {{ active?.triggered ?? 0 }} / {{ active?.points_total ?? 56 }} 个点位达标
+        </span>
+      </header>
+      <div class="panel__body">
+        <p class="active-empty" v-if="active && active.triggered === 0">
+          当前 <strong>{{ active.points_total }}</strong> 个点位<strong>均未达到</strong>暴雨预警标准
+          （最近 3 / 6 / 12 小时累计均低于 50 mm）
+        </p>
+
+        <div v-else class="active-list">
+          <div
+            v-for="p in active?.points ?? []"
+            :key="p.adcode"
+            class="active-item"
+            :style="{ borderLeftColor: p.level_color }"
+          >
+            <span class="active-item__badge" :style="{ background: p.level_color }">{{ p.level_name }}</span>
+            <span class="active-item__name">
+              {{ p.name }}<em>{{ p.province }}</em>
+            </span>
+            <span class="active-item__vals text-mono">
+              3h {{ formatNumber(p.sum_3h, 1) }} ·
+              6h {{ formatNumber(p.sum_6h, 1) }} ·
+              12h {{ formatNumber(p.sum_12h, 1) }} mm
+            </span>
+            <span class="active-item__rule">
+              触发：过去 {{ p.rule_hours }} 小时 ≥ {{ p.rule_min_mm }} mm
+            </span>
+          </div>
+        </div>
+
+        <div class="active-rules">
+          <span class="text-muted">判定标准</span>
+          <span v-for="r in active?.thresholds ?? []" :key="r.key" class="active-rule">
+            <i :style="{ background: r.color }"></i>{{ r.name }}：{{ r.hours }} 小时 ≥ {{ r.min_mm }} mm
+          </span>
+        </div>
+
+        <p class="active-note">{{ active?.note ?? '本地达标判定（回看口径），非气象部门发布的预警信号。' }}</p>
+      </div>
+    </section>
     <!-- 数据源说明（诚实标注） -->
     <section class="panel panel--info">
       <header class="panel__header">
@@ -361,5 +411,93 @@ code {
   padding: 10px 14px 14px;
   font-size: 12px;
   line-height: 1.7;
+}
+/* 当前预警状态 */
+.active-empty {
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-1);
+  background: rgba(76, 195, 138, 0.07);
+  border: 1px solid rgba(76, 195, 138, 0.24);
+  border-radius: var(--radius-sm);
+}
+
+.active-empty strong {
+  color: var(--success);
+}
+
+.active-list {
+  display: grid;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.active-item {
+  display: grid;
+  grid-template-columns: auto 130px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 11px;
+  font-size: 12.5px;
+  background: rgba(120, 170, 255, 0.05);
+  border-left: 3px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+}
+
+.active-item__badge {
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #08111f;
+  border-radius: 999px;
+}
+
+.active-item__name em {
+  margin-left: 6px;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.active-item__vals {
+  font-size: 11.5px;
+  color: var(--text-1);
+}
+
+.active-item__rule {
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.active-rules {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin-top: var(--gap-sm);
+  font-size: 11.5px;
+}
+
+.active-rule {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-1);
+}
+
+.active-rule i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.active-note {
+  margin-top: 8px;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--text-2);
 }
 </style>

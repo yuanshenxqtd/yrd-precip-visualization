@@ -324,3 +324,42 @@ class FieldGrid(BaseModel):
     values: list[float] = Field(
         description="网格值，按行优先排列，index = row * cols + col；lat = lat_min + row * step"
     )
+
+# ---------------------------------------------------------------- 本地达标预警
+
+class AlertThreshold(BaseModel):
+    """一条预警等级的判定规则（展示用）。"""
+
+    key: str = Field(description="等级标识：red / orange / yellow / blue")
+    name: str = Field(description="等级名称")
+    hours: int = Field(description="回看小时数")
+    min_mm: float = Field(description="该时段累计降水阈值（mm）")
+    color: str = Field(description="建议配色")
+
+
+class ActiveAlertPoint(BaseModel):
+    """一个达到预警标准的点位。"""
+
+    adcode: str = Field(description="行政区划代码")
+    name: str = Field(description="点位名称")
+    province: str = Field(description="所属省份")
+    level_key: str = Field(description="等级标识")
+    level_name: str = Field(description="等级名称")
+    level_color: str = Field(description="建议配色")
+    rule_hours: int = Field(description="触发的规则：回看小时数")
+    rule_min_mm: float = Field(description="触发的规则：累计阈值")
+    sum_3h: float = Field(description="过去 3 小时累计（mm）")
+    sum_6h: float = Field(description="过去 6 小时累计（mm）")
+    sum_12h: float = Field(description="过去 12 小时累计（mm）")
+    peak_hourly: float = Field(description="过去 12 小时最大小时雨强（mm/h）")
+
+
+class ActiveAlerts(BaseModel):
+    """当前达到暴雨预警标准的点位集合（本地达标判定，非官方发布）。"""
+
+    latest_obs_time: str | None = Field(default=None, description="用于判定的实况时刻")
+    points_total: int = Field(description="参与判定的点位数")
+    triggered: int = Field(description="达到标准的点位数")
+    points: list[ActiveAlertPoint] = Field(description="按等级、累计排序的点位列表")
+    thresholds: list[AlertThreshold] = Field(description="判定规则，供界面展示")
+    note: str = Field(description="口径说明（必须展示给用户）")

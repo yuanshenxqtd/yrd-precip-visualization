@@ -8,8 +8,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from .. import crud
+from .. import alerting, crud
 from ..db import get_session
+from ..schemas import ActiveAlerts
 
 router = APIRouter(tags=["预警"])
 
@@ -25,3 +26,21 @@ def read_alerts(
     如需该模块生效，可接入和风天气的预警接口（见 docs/PLAN.md 第 12 节）。
     """
     return crud.list_alerts(session, limit=limit)
+
+
+@router.get(
+    "/alerts/active",
+    response_model=ActiveAlerts,
+    summary="当前达到暴雨预警标准的点位（本地达标判定）",
+)
+def read_active_alerts(session: Session = Depends(get_session)) -> dict:
+    """按国标暴雨预警阈值判定**当前**哪些点位达标。
+
+    与 `/alerts` 的区别：
+    · `/alerts`        —— 表里存的预警记录（目前为空，等官方源接入）
+    · `/alerts/active` —— 用实况降水**实时算**出来的达标判定，不依赖外部数据源
+
+    口径是**回看**而非预报：官方预警说"未来 12 小时将达"，这里判定"过去 12 小时已累计"。
+    两者性质不同，界面必须标注清楚，不能当成官方预警展示。
+    """
+    return alerting.compute_active(session)

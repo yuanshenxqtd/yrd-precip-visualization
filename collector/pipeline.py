@@ -39,6 +39,7 @@ from backend.app.levels import classify
 from backend.app.models import CollectLog, GridPoint, PrecipDaily, PrecipHourly
 
 from . import openmeteo
+from .alerts import derive_and_store
 
 # SQLite 单条语句的绑定参数有上限，分批 UPSERT
 UPSERT_CHUNK = 500
@@ -275,6 +276,13 @@ def collect(
             since_date = min(observed_times)[:10] if observed_times else _now_str()[:10]
             daily_rows = recompute_daily(session, since_date)
 
+            # 顺带做一次「达标判定」并落库（source='derived'）。
+            # 失败不能影响采集本身，所以单独兜住异常。
+            try:
+                alerts_triggered = derive_and_store(session)
+            except Exception:
+                alerts_triggered = 0
+
             total_hourly = after
             total_daily = session.scalar(select(func.count()).select_from(PrecipDaily)) or 0
 
@@ -303,6 +311,7 @@ def collect(
             "total_hourly": total_hourly,
             "total_daily": total_daily,
             "nonzero_hours": nonzero_count,
+            "alerts_triggered": alerts_triggered,
             "total_precip_mm": round(nonzero, 2),
             "wettest_point": wettest_label,
             "wettest_mm": round(wettest_sum, 2) if wettest_label else 0.0,

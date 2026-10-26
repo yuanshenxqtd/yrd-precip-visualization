@@ -334,3 +334,37 @@ export interface FieldGrid {
   /** index = row * cols + col；lon = lon_min + col*step，lat = lat_min + row*step */
   values: number[]
 }
+/* ---------------------------------------------------------------- 本地达标预警 */
+
+export interface AlertThreshold {
+  key: string
+  name: string
+  hours: number
+  min_mm: number
+  color: string
+}
+
+export interface ActiveAlertPoint {
+  adcode: string
+  name: string
+  province: string
+  level_key: string
+  level_name: string
+  level_color: string
+  rule_hours: number
+  rule_min_mm: number
+  sum_3h: number
+  sum_6h: number
+  sum_12h: number
+  peak_hourly: number
+}
+
+/** 当前达到暴雨预警标准的点位（本地达标判定，非官方发布） */
+export interface ActiveAlerts {
+  latest_obs_time: string | null
+  points_total: number
+  triggered: number
+  points: ActiveAlertPoint[]
+  thresholds: AlertThreshold[]
+  note: string
+}

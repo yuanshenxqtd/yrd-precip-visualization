@@ -1,5 +1,6 @@
 import { http } from './client'
 import type {
+  ActiveAlerts,
   AlertItem,
   AnomalyPoint,
   BoxplotItem,
@@ -58,6 +59,8 @@ export const fetchHighlights = (params?: { hours?: number; window_days?: number 
   get<OverviewHighlights>('/overview/highlights', params)
 export const fetchRanking = (params?: { limit?: number; hours?: number }) =>
   get<RankingItem[]>('/overview/ranking', params)
+
+export const fetchActiveAlerts = () => get<ActiveAlerts>('/alerts/active')
 
 /* ------------------------------------------------------------ 实时监测 */
 export const fetchRealtimeLatest = () => get<RealtimeLatest>('/realtime/latest')

@@ -31,8 +31,7 @@
 
 ## ⚠️ 环境注意事项（本机特有，务必遵守）
 
-**本机的系统临时目录对 Python 不可用**：`C:\Users\zhang\AppData\Local\Temp` 会让 Python 的 `tempfile` 报
-`No usable temporary directory found`，导致 `pip` / `venv` **长时间空转甚至卡死**（实测单次空烧 400+ 秒 CPU 且零进展）。
+
 
 **解决办法：把临时目录指向工作区内的 `.tmp`。**
 
@@ -45,10 +44,6 @@ set "TMPDIR=D:\visualization\.tmp"
 `scripts\setup.bat` 已内置该设置。**手动执行任何 pip 命令时也必须先设置**，否则会卡死。
 另外，本机 pip 缓存（`%LOCALAPPDATA%\pip\cache`，约 458 MB）疑有损坏，安装时统一加 `--no-cache-dir`。
 
-**前端 pnpm 必须用独立安装的那一份**：本机 PATH 里的 `pnpm` 会被 DSH Desktop 注入的
-shim（`pnpm 11.8.0`，跑在 DSH 自带 Node 上）抢先，而独立安装的是
-`%APPDATA%\npm\pnpm.cmd`（`pnpm 12.5.1`，跑在 `D:\Program Files\nodejs`）。
-两者对「最小发布年龄」策略的默认值不同，会造成**同一份锁文件一个能装、一个报错**的迷惑现象。
 
 `scripts\run_frontend.bat` 已显式指定独立 pnpm 路径，无需手动处理。
 手动执行时请用完整路径：
